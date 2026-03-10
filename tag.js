@@ -4,7 +4,7 @@ WidgetMetadata = {
   description: "Bangumi 标签浏览 + TMDB匹配",
   author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
-  version: "1.5",
+  version: "1.6",
   requiredVersion: "0.0.1",
   detailCacheDuration: 60,
   modules: [
@@ -62,8 +62,8 @@ function buildDisplayDescription_bg(releaseDate, description, rating) {
 
 //===============BGM功能函数===============
 const WidgetConfig_bg = {
-    MAX_CONCURRENT_DETAILS_FETCH: 10, 
-    MAX_CONCURRENT_TMDB_SEARCHES: 4, 
+    MAX_CONCURRENT_DETAILS_FETCH: 16, 
+    MAX_CONCURRENT_TMDB_SEARCHES: 8, 
     MAX_CONCURRENT_CALENDAR_ENHANCE: 3,
     MAX_CONCURRENT_TMDB_FULL_DETAILS_FETCH: 3,
     HTTP_RETRIES: 1, 
@@ -1394,8 +1394,7 @@ async function fetchItemDetails_bg(pendingItem, categoryHint, rankingContext = {
         }
     }
     
-    const bgmSummaryForCheck = item.description || pendingItem.summary || getInfoFromBox_bg(Widget.html.load(pendingItem.detailLink ? (await PrefetchCache_bg.fetchAndCacheHtml(pendingItem.detailLink, {})) : ""), "简介") || pendingItem.infoTextFromList || "";
-    const bgmHasChineseSummary = /[\u4e00-\u9fa5]/.test(bgmSummaryForCheck);
+    const bgmSummaryForCheck = item.description || pendingItem.infoTextFromList || "";    const bgmHasChineseSummary = /[\u4e00-\u9fa5]/.test(bgmSummaryForCheck);
     const bgmRatingTotalFromBgm = pendingItem.rating?.total || item.bgm_rating_total || 0; 
 
     const bgmItemDataForScoring = {
