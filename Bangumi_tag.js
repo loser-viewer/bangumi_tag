@@ -1,21 +1,22 @@
+// =============UserScript=============
 WidgetMetadata = {
   id: "forward.bangumi.tag",
-  title: "Bangumi 标签筛选",
+  title: "Bangumi 动画标签",
   description: "按标签浏览 Bangumi 动画",
-  author: "custom",
+  author: "extract",
   version: "1.0",
   requiredVersion: "0.0.1",
   modules: [
     {
       title: "Bangumi 标签",
-      description: "按标签浏览动画",
+      description: "按标签浏览动画列表",
       requiresWebView: false,
       functionName: "fetchBangumiTagPage_bg",
       cacheDuration: 3600,
       params: [
         {
           name: "tag_keyword",
-          title: "标签",
+          title: "动画标签",
           type: "input",
           value: "",
           placeholders: [
@@ -28,7 +29,7 @@ WidgetMetadata = {
         },
         {
           name: "sort",
-          title: "排序",
+          title: "排序方式",
           type: "enumeration",
           value: "rank",
           enumOptions: [
@@ -42,35 +43,64 @@ WidgetMetadata = {
       ]
     }
   ]
-};
+}
 
+// =====================
+// Bangumi 标签获取
+// =====================
 async function fetchBangumiTagPage_bg(params = {}) {
 
-  const page = parseInt(params.page) || 1
   const tag = params.tag_keyword || ""
   const sort = params.sort || "rank"
+  const page = parseInt(params.page) || 1
 
-  let url = `https://api.bgm.tv/v0/search/subjects`
+  let url = "https://bgm.tv/anime"
 
-  const body = {
-    keyword: tag,
-    filter: { type: [2] }
+  if (tag) {
+    url = `https://bgm.tv/anime/tag/${encodeURIComponent(tag)}`
   }
 
-  const response = await Widget.http.post(url,{
+  url += `?sort=${sort}&page=${page}`
+
+  const res = await Widget.http.get(url,{
     headers:{
-      "Content-Type":"application/json"
-    },
-    body: JSON.stringify(body)
+      "User-Agent":
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)"
+    }
   })
 
-  const data = response.data.data || []
+  const html = res.data
 
-  return data.map(item => ({
-    id: item.id,
-    type: "bangumi",
-    title: item.name_cn || item.name,
-    coverUrl: item.images?.large,
-    description: `评分 ${item.rating?.score || "-"}`
-  }))
+  const list = []
+
+  const regex = /<li class="item">([\s\S]*?)<\/li>/g
+  let match
+
+  while ((match = regex.exec(html)) !== null) {
+
+    const item = match[1]
+
+    const title =
+      item.match(/<h3>[\s\S]*?title="([^"]+)"/)?.[1] ||
+      item.match(/<h3>[\s\S]*?>([^<]+)<\/a>/)?.[1]
+
+    const cover =
+      item.match(/<img src="([^"]+)"/)?.[1]
+
+    const id =
+      item.match(/\/subject\/(\d+)/)?.[1]
+
+    const score =
+      item.match(/class="fade">([\d\.]+)</)?.[1]
+
+    list.push({
+      id: id,
+      type: "bangumi",
+      title: title,
+      coverUrl: cover?.replace("s.jpg","l.jpg"),
+      description: score ? `评分 ${score}` : ""
+    })
+  }
+
+  return list
 }
