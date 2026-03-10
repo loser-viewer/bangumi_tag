@@ -5,7 +5,7 @@ WidgetMetadata = {
   title: "Bangumi 动画标签",
   description: "Bangumi 标签浏览 + TMDB匹配（平衡修正版）",
   author: "extract",
-  version: "1.5.2",
+  version: "1.5.3",
   requiredVersion: "0.0.1",
   modules: [
     {
@@ -384,8 +384,10 @@ function calculateMatchScore_bg(r, title, originalTitle, year, expectedType = "t
     else score -= 30;
   }
 
-  if (r.genre_ids?.includes(16)) score += 50;
-  else score -= 100;
+  if (Array.isArray(r.genre_ids) && r.genre_ids.length > 0) {
+  if (r.genre_ids.includes(16)) score += 50;
+  else score -= 40;
+}
 
   score += Math.log10((r.popularity || 0) + 1);
   score += Math.log10((r.vote_count || 0) + 1);
