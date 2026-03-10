@@ -5,7 +5,7 @@ WidgetMetadata = {
   title: "Bangumi 动画标签",
   description: "Bangumi 标签浏览 + TMDB匹配（平衡修正版）",
   author: "extract",
-  version: "1.5.0",
+  version: "1.5.1",
   requiredVersion: "0.0.1",
   modules: [
     {
@@ -332,21 +332,25 @@ function calculateMatchScore_bg(r, title, year, expectedType = "tv") {
   const simOriginal = calculateSimilarity_bg(title, r.original_title || r.original_name || "");
   const bestSim = Math.max(simTitle, simOriginal);
 
+  // 放宽短标题
   if (tmdbTitle === bgmTitle || tmdbOriginal === bgmTitle) {
-    score += 140;
-  } else if (bestSim >= 0.92) {
-    score += 90;
-  } else if (bestSim >= 0.82) {
-    score += 55;
-  } else if (bestSim >= 0.72) {
-    score += 20;
+    score += 160;
+  } else if (bestSim >= 0.90) {
+    score += 100;
+  } else if (bestSim >= 0.80) {
+    score += 60;
+  } else if (bestSim >= 0.68) {
+    score += 25;
   } else {
-    score -= 20;
+    score -= 10;
   }
 
-  const lenDiff = Math.abs(tmdbTitle.length - bgmTitle.length);
-  if (lenDiff >= 12) score -= 60;
-  else if (lenDiff >= 8) score -= 35;
+  // 长度惩罚只对长标题启用，避免 Kanon/AIR 被误杀
+  if (bgmTitle.length >= 8) {
+    const lenDiff = Math.abs(tmdbTitle.length - bgmTitle.length);
+    if (lenDiff >= 12) score -= 60;
+    else if (lenDiff >= 8) score -= 35;
+  }
 
   const tmdbYear =
     (r.release_date || r.first_air_date || "")
@@ -359,11 +363,11 @@ function calculateMatchScore_bg(r, title, year, expectedType = "tv") {
     if (diff === 0) score += 100;
     else if (diff === 1) score += 60;
     else if (diff === 2) score += 20;
-    else score -= 40;
+    else score -= 30;
   }
 
   if (r.genre_ids?.includes(16)) score += 50;
-  else score -= 120;
+  else score -= 100;
 
   score += Math.log10((r.popularity || 0) + 1);
   score += Math.log10((r.vote_count || 0) + 1);
@@ -436,7 +440,7 @@ function selectMatches_bg(results, title, year, expectedType = "tv") {
     }
   }
 
-  if (bestScore < 5) return null;
+  if (bestScore < 0) return null;
 
   return best;
 }
