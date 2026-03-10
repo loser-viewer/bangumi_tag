@@ -356,26 +356,42 @@ function selectMatches_bg(results,title,year){
 // ==============================
 function integrateTmdbItem_bg(baseItem,tmdb){
 
+  const posterPath = tmdb.poster_path || ""
+  const backdropPath = tmdb.backdrop_path || ""
+
   return {
+
     id:String(tmdb.id),
     type:"tmdb",
+
     title:tmdb.title || tmdb.name || baseItem.title,
+
     description:tmdb.overview || baseItem.description,
+
     releaseDate:
       tmdb.release_date ||
       tmdb.first_air_date ||
       baseItem.releaseDate ||
       "",
+
     coverUrl:
-      tmdb.poster_path
-        ? `${WidgetConfig_bg.TMDB_IMAGE_BASE}${tmdb.poster_path}`
+      posterPath
+        ? `${WidgetConfig_bg.TMDB_IMAGE_BASE}${posterPath}`
         : baseItem.coverUrl,
+
+    // 关键字段
+    posterPath: posterPath,
+    backdropPath: backdropPath,
+
     rating:
-      tmdb.vote_average
+      typeof tmdb.vote_average === "number"
         ? tmdb.vote_average.toFixed(1)
         : "",
-    mediaType:tmdb.media_type || "tv"
-  };
+
+    mediaType: tmdb.media_type || "tv"
+
+  }
+
 }
 
 
