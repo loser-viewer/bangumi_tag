@@ -365,7 +365,9 @@ function integrateTmdbItem_bg(baseItem,tmdb){
     id: String(tmdb.id),
     type: "tmdb",
     title: tmdb.title || tmdb.name || baseItem.title,
-    description: tmdb.overview || baseItem.description,
+    description:
+  (baseItem.bgmRating ? `Bangumi评分 ${baseItem.bgmRating}\n` : "") +
+  (tmdb.overview || baseItem.description),
     releaseDate:
       tmdb.release_date ||
       tmdb.first_air_date ||
