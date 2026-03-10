@@ -43,6 +43,7 @@ WidgetMetadata = {
           title: "排序",
           type: "enumeration",
           value: "rank",
+          multiple: false,
           enumOptions: [
             { title: "综合排名", value: "rank" },
             { title: "标注数", value: "collects" },
