@@ -4,7 +4,7 @@ WidgetMetadata = {
   description: "Bangumi 标签浏览 + TMDB匹配",
   author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
-  version: "1.3",
+  version: "1.4",
   requiredVersion: "0.0.1",
   detailCacheDuration: 60,
   modules: [
@@ -465,50 +465,6 @@ function populateItemFromTmdbFullDetail_bg(itemRef, tmdbDetail) {
         console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [TMDB填充工具] 条目 (TMDB ID ${itemRef.tmdb_id}) 已从完整详情填充。`);
     }
 }
-const baseDescription = currentDescription
-    .replace(/^日期:\s*[^｜|]+[｜|]?\s*/g, "")
-    .replace(/^评分:\s*[^｜|]+[｜|]?\s*/g, "")
-    .trim();
-
-itemRef.description = buildDisplayDescription_bg(
-    itemRef.releaseDate,
-    tmdbDetail.overview || baseDescription,
-    itemRef.rating
-);
-    if (tmdbDetail.genres?.length > 0) {
-        itemRef.tmdb_genres = tmdbDetail.genres.map(g => g.name).join(', ');
-        itemRef.genreTitle = itemRef.tmdb_genres;
-    }
-    itemRef.tmdb_tagline = tmdbDetail.tagline || "";
-    itemRef.tmdb_status = tmdbDetail.status || "";
-    itemRef.tmdb_original_title = tmdbDetail.original_title || tmdbDetail.original_name || "";
-    if (tmdbDetail.origin_country && Array.isArray(tmdbDetail.origin_country) && tmdbDetail.origin_country.length > 0) {
-        itemRef.tmdb_origin_countries = tmdbDetail.origin_country;
-    } else if (tmdbDetail.production_countries && Array.isArray(tmdbDetail.production_countries) && tmdbDetail.production_countries.length > 0) {
-        itemRef.tmdb_origin_countries = tmdbDetail.production_countries.map(pc => pc.iso_3166_1);
-    } else if (!itemRef.tmdb_origin_countries || itemRef.tmdb_origin_countries.length === 0) {
-        itemRef.tmdb_origin_countries = [];
-    }
-    if (typeof tmdbDetail.vote_count === 'number') {
-        itemRef.tmdb_vote_count = tmdbDetail.vote_count;
-    }
-    let bestChineseTitleFromTmdb = '';
-    if (tmdbDetail.translations?.translations) {
-        const chineseTranslation = tmdbDetail.translations.translations.find(
-            t => t.iso_639_1 === 'zh' && t.iso_3166_1 === 'CN' && t.data && (t.data.title || t.data.name)
-        );
-        if (chineseTranslation) {
-            bestChineseTitleFromTmdb = (chineseTranslation.data.title || chineseTranslation.data.name).trim();
-        }
-    }
-    itemRef.tmdb_preferred_title = bestChineseTitleFromTmdb || itemRef.title; 
-    if (bestChineseTitleFromTmdb && bestChineseTitleFromTmdb !== itemRef.title) {
-        if(WidgetConfig_bg.DEBUG_LOGGING) console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [TMDB填充工具] 更新 TMDB ID ${itemRef.tmdb_id} 的主标题为 TMDB 中文翻译: "${bestChineseTitleFromTmdb.substring(0,30)}..." (原 BGM 链接 ID: ${itemRef.link?.split('/').pop() || 'N/A'})`);
-        itemRef.title = bestChineseTitleFromTmdb;
-    }
-    if (WidgetConfig_bg.DEBUG_LOGGING) console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [TMDB填充工具] 条目 (TMDB ID ${itemRef.tmdb_id}) 已从完整详情填充。`);
-}
-
 
 function scoreTmdbResult_bg(result, query, validYear, searchMediaType, originalTitle, chineseTitle, isLikelyMovieOrShort = false, isShortFilm = false) {
 
