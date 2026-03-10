@@ -5,7 +5,7 @@ WidgetMetadata = {
   title: "Bangumi 动画标签",
   description: "Bangumi 标签浏览 + TMDB匹配（中文别名优先版）",
   author: "extract",
-  version: "1.5.2",
+  version: "1.5.3",
   requiredVersion: "0.0.1",
   modules: [
     {
