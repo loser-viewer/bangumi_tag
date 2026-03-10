@@ -4,7 +4,7 @@ WidgetMetadata = {
   description: "Bangumi 标签浏览 + TMDB匹配",
   author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
-  version: "1.4",
+  version: "1.5",
   requiredVersion: "0.0.1",
   detailCacheDuration: 60,
   modules: [
@@ -390,7 +390,57 @@ function calculateContentTTL_bg(identifier, context) {
 
 function normalizeTmdbQuery_bg(query) { if (!query || typeof query !== 'string') return ""; return query.toLowerCase().trim().replace(/[\\[\\]【】（）()「」『』:：\\-－_,\\.\\・]/g, ' ').replace(/\\s+/g, ' ').trim();}
 function getInfoFromBox_bg($, labelText) { let value = '';const listItems = $('#infobox li');for (let i = 0; i < listItems.length; i++) { const liElement = listItems.eq(i); const tipSpan = liElement.find('span.tip').first(); if (tipSpan.text().trim() === labelText) { value = liElement.clone().children('span.tip').remove().end().text().trim(); return value; } } return value; }
-function parseDate_bg(dateStr) { if (!dateStr || typeof dateStr !== 'string') return ''; dateStr = dateStr.trim(); let match; match = dateStr.match(/^(\\d{4})年(\\d{1,2})月(\\d{1,2})日/); if (match) return `${match[1]}-${String(match[2]).padStart(2, '0')}-${String(match[3]).padStart(2, '0')}`; match = dateStr.match(/^(\\d{4})年(\\d{1,2})月(?!日)/); if (match) return `${match[1]}-${String(match[2]).padStart(2, '0')}-01`; match = dateStr.match(/^(\\d{4})年(冬|春|夏|秋)/); if (match) { let m = '01'; if (match[2] === '春') m = '04'; else if (match[2] === '夏') m = '07'; else if (match[2] === '秋') m = '10'; return `${match[1]}-${m}-01`; } match = dateStr.match(/^(\\d{4})年(?![\\d月春夏秋冬])/); if (match) return `${match[1]}-01-01`; match = dateStr.match(/^(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})/); if (match) return `${match[1]}-${String(match[2]).padStart(2, '0')}-${String(match[3]).padStart(2, '0')}`; match = dateStr.match(/^(\\d{4})[-/](\\d{1,2})(?!.*[-/])/); if (match) return `${match[1]}-${String(match[2]).padStart(2, '0')}-01`; match = dateStr.match(/^(\\d{4})$/); if (match) return `${match[1]}-01-01`; if (WidgetConfig_bg.DEBUG_LOGGING && dateStr) console.warn(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [日期解析] 无法解析日期字符串: "${dateStr}"`); return '';}
+function parseDate_bg(dateStr) {
+    if (!dateStr || typeof dateStr !== 'string') return '';
+    dateStr = dateStr.trim();
+
+    let match;
+
+    match = dateStr.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日/);
+    if (match) {
+        return `${match[1]}-${String(match[2]).padStart(2, '0')}-${String(match[3]).padStart(2, '0')}`;
+    }
+
+    match = dateStr.match(/^(\d{4})年(\d{1,2})月(?!日)/);
+    if (match) {
+        return `${match[1]}-${String(match[2]).padStart(2, '0')}-01`;
+    }
+
+    match = dateStr.match(/^(\d{4})年(冬|春|夏|秋)/);
+    if (match) {
+        let m = '01';
+        if (match[2] === '春') m = '04';
+        else if (match[2] === '夏') m = '07';
+        else if (match[2] === '秋') m = '10';
+        return `${match[1]}-${m}-01`;
+    }
+
+    match = dateStr.match(/^(\d{4})年(?![\d月春夏秋冬])/);
+    if (match) {
+        return `${match[1]}-01-01`;
+    }
+
+    match = dateStr.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (match) {
+        return `${match[1]}-${String(match[2]).padStart(2, '0')}-${String(match[3]).padStart(2, '0')}`;
+    }
+
+    match = dateStr.match(/^(\d{4})[-/](\d{1,2})(?!.*[-/])/);
+    if (match) {
+        return `${match[1]}-${String(match[2]).padStart(2, '0')}-01`;
+    }
+
+    match = dateStr.match(/^(\d{4})$/);
+    if (match) {
+        return `${match[1]}-01-01`;
+    }
+
+    if (WidgetConfig_bg.DEBUG_LOGGING && dateStr) {
+        console.warn(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [日期解析] 无法解析日期字符串: "${dateStr}"`);
+    }
+
+    return '';
+}
 
 function populateItemFromTmdbFullDetail_bg(itemRef, tmdbDetail) {
     if (!tmdbDetail) {
