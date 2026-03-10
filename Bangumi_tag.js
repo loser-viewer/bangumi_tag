@@ -15,7 +15,7 @@ const WidgetConfig_bg = {
   BGM_TAG_URL: "https://bgm.tv/anime/tag",
   TMDB_IMAGE_BASE: "https://image.tmdb.org/t/p/w500",
   TMDB_SEARCH_MIN_SCORE: 35,
-  MAX_MATCH_ITEMS: 12
+  TMDB_BATCH_SIZE: 8
 };
 
 const tmdbCache_bg = {};
@@ -25,7 +25,7 @@ WidgetMetadata = {
   title: "Bangumi 动画标签",
   description: "Bangumi 标签浏览 + TMDB 匹配",
   author: "ChatGPT",
-  version: "2.1.0",
+  version: "3.0.0",
   requiredVersion: "0.0.1",
   modules: [
     {
@@ -78,7 +78,7 @@ async function fetchBangumiTagPage_bg(params = {}) {
 }
 
 // ==========================
-// Bangumi 抓取
+// Bangumi 页面解析
 // ==========================
 
 async function processBangumiTagPage_bg(url) {
@@ -99,18 +99,26 @@ async function processBangumiTagPage_bg(url) {
 
   const parsed = items
     .map(parseBangumiItem_bg)
-    .filter(Boolean)
-    .slice(0, WidgetConfig_bg.MAX_MATCH_ITEMS);
+    .filter(Boolean);
 
-  const results = await Promise.all(
-    parsed.map(i => tryMatchTmdb_bg(i))
-  );
+  const results = [];
 
-  return results.filter(Boolean);
+  for (let i = 0; i < parsed.length; i += WidgetConfig_bg.TMDB_BATCH_SIZE) {
+
+    const batch = parsed.slice(i, i + WidgetConfig_bg.TMDB_BATCH_SIZE);
+
+    const r = await Promise.all(
+      batch.map(i => tryMatchTmdb_bg(i))
+    );
+
+    results.push(...r.filter(Boolean));
+  }
+
+  return results;
 }
 
 // ==========================
-// 解析 Bangumi
+// 解析 Bangumi 条目
 // ==========================
 
 function parseBangumiItem_bg(item){
@@ -136,7 +144,7 @@ function parseBangumiItem_bg(item){
 
   const year = extractYear_bg(info);
 
-  const mediaType = detectType_bg(title,smallTitle,info);
+  const type = detectType_bg(title,smallTitle,info);
 
   return {
     bgm_id:id,
@@ -145,7 +153,7 @@ function parseBangumiItem_bg(item){
     chineseTitle: title,
     coverUrl:cover,
     releaseDate:year ? `${year}-01-01` : "",
-    tmdbSearchType:mediaType
+    tmdbSearchType:type
   };
 }
 
