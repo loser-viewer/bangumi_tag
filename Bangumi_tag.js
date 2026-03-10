@@ -1,15 +1,15 @@
 // ============= UserScript =============
 // @name         Bangumi 标签动画
-// @version      1.1.0
-// @description  Bangumi 标签浏览 + TMDB匹配（影视榜单算法版）
+// @version      1.2.0
+// @description  Bangumi 标签浏览 + TMDB匹配（影视榜单算法完整版）
 // ============= UserScript =============
 
 WidgetMetadata = {
   id: "forward.bangumi.tag.only",
   title: "Bangumi 动画标签",
-  description: "Bangumi 标签浏览（影视榜单匹配算法）",
+  description: "Bangumi 标签浏览（影视榜单算法）",
   author: "extract",
-  version: "1.1.0",
+  version: "1.2.0",
   requiredVersion: "0.0.1",
   modules: [
     {
@@ -77,8 +77,8 @@ async function fetchBangumiTagPage_bg(params = {}) {
 async function processBangumiTagPage_bg(url) {
 
   const response = await Widget.http.get(url);
-
   const html = typeof response?.data === "string" ? response.data : "";
+
   if (!html) return [];
 
   const listBlock =
@@ -133,9 +133,10 @@ function parseBangumiListItem_bg(html) {
   const info =
     stripTags_bg(
       html.match(/<p[^>]*class="info"[^>]*>([\s\S]*?)<\/p>/)?.[1] || ""
-    );
+    ).trim();
 
-  const year = extractYear_bg(info);
+  const releaseDate = parseDate_bg(info);
+  const year = extractYear_bg(releaseDate || info);
 
   const cover =
     html.match(/<img[^>]+src="([^"]+)"/)?.[1] || "";
@@ -147,8 +148,42 @@ function parseBangumiListItem_bg(html) {
     description: info,
     coverUrl: normalizeUrl_bg(cover),
     year,
-    tmdbSearchType: detectItemTypeFromContent_bg({title,info})
+    releaseDate,
+    tmdbSearchType: detectItemTypeFromContent_bg({ title, info })
   };
+}
+
+
+// =============================
+// 日期解析
+// =============================
+function parseDate_bg(dateStr) {
+
+  if (!dateStr) return "";
+
+  dateStr = dateStr.trim();
+  let m;
+
+  m = dateStr.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+  if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+
+  m = dateStr.match(/(\d{4})年(\d{1,2})月/);
+  if (m) return `${m[1]}-${pad(m[2])}-01`;
+
+  m = dateStr.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+
+  m = dateStr.match(/(\d{4})[-/](\d{1,2})/);
+  if (m) return `${m[1]}-${pad(m[2])}-01`;
+
+  m = dateStr.match(/(19|20)\d{2}/);
+  if (m) return `${m[0]}-01-01`;
+
+  return "";
+}
+
+function pad(n){
+  return String(n).padStart(2,"0")
 }
 
 
@@ -181,7 +216,7 @@ async function matchBangumiToTmdb_bg(item) {
 
 
 // =============================
-// TMDB 查询生成（影视榜单）
+// 查询生成
 // =============================
 function generateTmdbSearchQueries_bg(originalTitle, listTitle) {
 
@@ -205,7 +240,7 @@ function generateTmdbSearchQueries_bg(originalTitle, listTitle) {
 // =============================
 // TMDB 搜索
 // =============================
-async function fetchTmdbDataForBangumi_bg(item, mediaType) {
+async function fetchTmdbDataForBangumi_bg(item) {
 
   const queries =
     generateTmdbSearchQueries_bg(item.originalTitle,item.title);
@@ -242,7 +277,6 @@ async function fetchTmdbDataForBangumi_bg(item, mediaType) {
           if (!seen.has(key)) {
 
             seen.add(key);
-
             results.push({...r,media_type:type});
 
           }
@@ -260,7 +294,7 @@ async function fetchTmdbDataForBangumi_bg(item, mediaType) {
 
 
 // =============================
-// TMDB 评分（影视榜单算法）
+// 影视榜单评分
 // =============================
 function calculateMatchScore_bg(result,title,year,type){
 
@@ -318,7 +352,7 @@ function calculateMatchScore_bg(result,title,year,type){
 
 
 // =============================
-// 选择最佳
+// 选最佳
 // =============================
 function selectMatches_bg(results,title,year,opt={}){
 
@@ -347,7 +381,7 @@ function selectMatches_bg(results,title,year,opt={}){
 
 
 // =============================
-// 输出 TMDB 数据
+// 输出
 // =============================
 function integrateTmdbItem_bg(baseItem,tmdb){
 
@@ -363,7 +397,8 @@ function integrateTmdbItem_bg(baseItem,tmdb){
     releaseDate:
       tmdb.release_date ||
       tmdb.first_air_date ||
-      baseItem.year,
+      baseItem.releaseDate ||
+      (baseItem.year ? `${baseItem.year}-01-01` : ""),
 
     coverUrl:
       tmdb.poster_path
