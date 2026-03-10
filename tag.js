@@ -1,7 +1,7 @@
 
 WidgetMetadata = {
   id: "bangumi_tag",
-  title: "影视榜单",
+  title: "bangumi_tag",
   description: "聚合豆瓣、TMDB、IMDB和Bangumi的影视动画榜单",
   author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
