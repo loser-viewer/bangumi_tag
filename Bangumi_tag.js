@@ -5,7 +5,7 @@ WidgetMetadata = {
   title: "Bangumi 动画标签",
   description: "Bangumi 标签浏览 + TMDB匹配（优化版）",
   author: "extract",
-  version: "1.4.5",
+  version: "1.4.6",
   requiredVersion: "0.0.1",
   modules: [
     {
@@ -40,6 +40,7 @@ const WidgetConfig_bg = {
 
 const tmdbCache_bg = {};
 const tmdbSearchCache_bg = {};
+const bgmDetailCache_bg = {};
 
 
 // ==============================
@@ -85,8 +86,13 @@ async function processBangumiTagPage_bg(url) {
 
     const batch = bangumiItems.slice(i, i + WidgetConfig_bg.FETCH_BATCH_SIZE);
 
+    // 这里只新增了详情页评分抓取，不改匹配逻辑
+    const batchWithRating = await Promise.all(
+      batch.map(fetchBangumiRating_bg)
+    );
+
     const batchResults = await Promise.all(
-      batch.map(matchBangumiToTmdb_bg)
+      batchWithRating.map(matchBangumiToTmdb_bg)
     );
 
     results.push(...batchResults.filter(Boolean));
@@ -123,10 +129,7 @@ function parseBangumiListItem_bg(html) {
 
   const cover =
     html.match(/<img[^>]+src="([^"]+)"/)?.[1] || "";
-  const score =
-  html.match(/<span class="fade">([\d.]+)<\/span>/)?.[1] ||
-  html.match(/<span[^>]*class="[^"]*fade[^"]*"[^>]*>([\d.]+)<\/span>/)?.[1] ||
-  "";
+
   const releaseDate = parseDate_bg(info);
   const year = extractYear_bg(releaseDate || info);
 
@@ -138,9 +141,48 @@ function parseBangumiListItem_bg(html) {
     coverUrl: normalizeUrl_bg(cover),
     year,
     releaseDate,
-    bgmRating: score,
+    detailUrl: `${WidgetConfig_bg.BGM_BASE_URL}/subject/${id}`,
+    bgmRating: "",
     tmdbSearchType: "tv"
   };
+}
+
+
+// ==============================
+// 只新增：从 Bangumi 详情页抓评分
+// ==============================
+async function fetchBangumiRating_bg(item) {
+  if (!item?.detailUrl) return item;
+
+  if (bgmDetailCache_bg[item.id]) {
+    item.bgmRating = bgmDetailCache_bg[item.id];
+    return item;
+  }
+
+  try {
+    const resp = await Widget.http.get(item.detailUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)"
+      }
+    });
+
+    const html = typeof resp?.data === "string" ? resp.data : "";
+    if (!html) return item;
+
+    const detailScore =
+      html.match(/<span class="number" property="v:average">([\d.]+)<\/span>/)?.[1] ||
+      html.match(/property="v:average">([\d.]+)<\/span>/)?.[1] ||
+      "";
+
+    if (detailScore) {
+      bgmDetailCache_bg[item.id] = detailScore;
+      item.bgmRating = detailScore;
+    }
+
+    return item;
+  } catch (e) {
+    return item;
+  }
 }
 
 
@@ -169,7 +211,7 @@ function parseDate_bg(str) {
 }
 
 function pad(n){
-  return String(n).padStart(2,"0")
+  return String(n).padStart(2,"0");
 }
 
 
@@ -357,6 +399,7 @@ function selectMatches_bg(results,title,year){
 
 // ==============================
 // 输出
+// 这里只保留原逻辑，仅把 Bangumi 评分拼到 description
 // ==============================
 function integrateTmdbItem_bg(baseItem,tmdb){
 
@@ -366,24 +409,21 @@ function integrateTmdbItem_bg(baseItem,tmdb){
   return {
     id: String(tmdb.id),
     type: "tmdb",
-
     title: tmdb.title || tmdb.name || baseItem.title,
-
     description:
       (baseItem.bgmRating ? `⭐Bangumi ${baseItem.bgmRating} | ` : "") +
       (tmdb.overview || baseItem.description),
-
     releaseDate:
       tmdb.release_date ||
       tmdb.first_air_date ||
       baseItem.releaseDate ||
       "",
-
     coverUrl:
       posterPath
         ? `${WidgetConfig_bg.TMDB_IMAGE_BASE}${posterPath}`
         : baseItem.coverUrl,
 
+    // 三列竖海报显示字段
     posterPath: posterPath,
     backdropPath: backdropPath,
 
@@ -391,11 +431,11 @@ function integrateTmdbItem_bg(baseItem,tmdb){
       tmdb.vote_average
         ? tmdb.vote_average.toFixed(1)
         : "",
-
     mediaType: tmdb.media_type || "tv"
   };
 
 }
+
 
 // ==============================
 // 工具
