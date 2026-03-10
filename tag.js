@@ -4,7 +4,7 @@ WidgetMetadata = {
   description: "Bangumi 标签浏览 + TMDB匹配",
   author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
-  version: "1.6",
+  version: "1.5",
   requiredVersion: "0.0.1",
   detailCacheDuration: 60,
   modules: [
@@ -770,7 +770,7 @@ async function searchTmdb_bg(originalTitle, chineseTitle, listTitle, searchMedia
             if (preciseQueryText) {
                 if (WidgetConfig_bg.DEBUG_LOGGING) console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [TMDB搜索S1] ${searchIdentifierForLog} Query: "${preciseQueryText}", Year: ${validYear}`);
                 try {
-                    const params = { query: preciseQueryText, language: "zh-CN", include_adult: true }; 
+                    const params = { query: preciseQueryText, language: "zh-CN", include_adult: false }; 
                     if (searchMediaType === CONSTANTS_bg.MEDIA_TYPES.TV) {
                         params.first_air_date_year = validYear;
                     } else {
@@ -844,7 +844,7 @@ async function searchTmdb_bg(originalTitle, chineseTitle, listTitle, searchMedia
         
         const queryPromises = queriesToProcess.map(query => async () => {
             try {
-                const params = { query: query, language: "zh-CN", include_adult: true }; 
+                const params = { query: query, language: "zh-CN", include_adult: false }; 
                 const tmdbSearchResponse = await fetchWithRetry_bg(`/search/${searchMediaType}`, { params }, 'get', true, WidgetConfig_bg.HTTP_MAIN_RETRIES);
                 if (WidgetConfig_bg.DEBUG_LOGGING) console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [TMDB搜索S2RawRsp] ${searchIdentifierForLog} Query:"${query}", Raw TMDB Response: ${JSON.stringify(tmdbSearchResponse)?.substring(0, 500)}`);
                 const searchResults = tmdbSearchResponse?.results || (Array.isArray(tmdbSearchResponse) ? tmdbSearchResponse : null);
