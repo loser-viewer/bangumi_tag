@@ -14,15 +14,15 @@ const WidgetConfig_bg = {
   BGM_BASE_URL: "https://bgm.tv",
   BGM_TAG_URL: "https://bgm.tv/anime/tag",
   TMDB_IMAGE_BASE: "https://image.tmdb.org/t/p/w500",
-  MIN_MATCH_THRESHOLD: 0.7
+  TMDB_SEARCH_MIN_SCORE: 65
 };
 
 WidgetMetadata = {
   id: "forward.bangumi.simple.tag.tmdb",
   title: "Bangumi 动画标签",
-  description: "按标签浏览 Bangumi 动画",
+  description: "按标签、年份、月份浏览 Bangumi 动画",
   author: "extract",
-  version: "1.3.0",
+  version: "1.2.3",
   requiredVersion: "0.0.1",
   modules: [
     {
@@ -37,6 +37,25 @@ WidgetMetadata = {
           title: "动画标签",
           type: "input",
           value: ""
+        },
+        {
+          name: "airtime_year",
+          title: "年份",
+          type: "input",
+          value: ""
+        },
+        {
+          name: "airtime_month",
+          title: "月份",
+          type: "enumeration",
+          value: "",
+          enumOptions: [
+            { title: "全年", value: "" },
+            { title: "1月", value: "1" },
+            { title: "4月", value: "4" },
+            { title: "7月", value: "7" },
+            { title: "10月", value: "10" }
+          ]
         },
         {
           name: "sort",
@@ -62,30 +81,39 @@ WidgetMetadata = {
 
 const tmdbCache_bg = {};
 
-// ==========================
-// 入口
-// ==========================
 async function fetchBangumiTagPage_bg(params = {}) {
+
   const tag = (params.tag_keyword || "").trim();
+  const year = (params.airtime_year || "").trim();
+  const month = params.airtime_month || "";
   const sort = params.sort || "rank";
   const page = parseInt(params.page, 10) || 1;
 
-  if (!tag) return [];
+  let url = WidgetConfig_bg.BGM_BASE_URL + "/anime";
 
-  const url =
-    `${WidgetConfig_bg.BGM_TAG_URL}/${encodeURIComponent(tag)}?sort=${encodeURIComponent(sort)}&page=${page}`;
+  if (tag) {
+    url += `/tag/${encodeURIComponent(tag)}`;
+  }
+
+  if (year) {
+    if (month) {
+      url += `/airtime/${year}-${month}`;
+    } else {
+      url += `/airtime/${year}`;
+    }
+  }
+
+  url += `?sort=${encodeURIComponent(sort)}&page=${page}`;
 
   return await processBangumiTagPage_bg(url);
 }
 
-// ==========================
-// Bangumi 页面抓取
-// ==========================
 async function processBangumiTagPage_bg(url) {
-  const res = await Widget.http.get(url, {
-    headers: {
+
+  const res = await Widget.http.get(url,{
+    headers:{
       "User-Agent":
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)"
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)"
     }
   });
 
@@ -110,6 +138,7 @@ async function processBangumiTagPage_bg(url) {
   const batchSize = 6;
 
   for (let i = 0; i < bgmItems.length; i += batchSize) {
+
     const batch = bgmItems.slice(i, i + batchSize);
 
     const results = await Promise.all(
@@ -124,10 +153,8 @@ async function processBangumiTagPage_bg(url) {
   return list;
 }
 
-// ==========================
-// 解析 Bangumi 条目
-// ==========================
 function parseBangumiListItem_bg(item) {
+
   const id = item.match(/\/subject\/(\d+)/)?.[1];
 
   let title =
@@ -140,11 +167,10 @@ function parseBangumiListItem_bg(item) {
   if (!id || !title) return null;
 
   let cover =
-    item.match(/<img[^>]+src="([^"]+)"/)?.[1] ||
-    item.match(/<img[^>]+data-cfsrc="([^"]+)"/)?.[1] ||
-    "";
+    item.match(/<img[^>]+src="([^"]+)"/)?.[1];
 
   cover = normalizeUrl_bg(cover);
+
   if (cover) cover = cover.replace("/s/","/l/");
 
   const infoRaw =
@@ -156,288 +182,184 @@ function parseBangumiListItem_bg(item) {
   const smallTitleRaw =
     item.match(/<small[^>]*class="grey"[^>]*>([\s\S]*?)<\/small>/)?.[1] || "";
 
-  const smallTitle =
+  let smallTitle =
     decodeHtml_bg(stripTags_bg(smallTitleRaw)).trim();
 
+  const normalized = normalizeTitleRule_bg(title, smallTitle, info);
+
   const year = extractYear_bg(info);
-  const mediaType = detectAnimeMediaType_bg(title, smallTitle, info);
+
+  const mediaType = detectAnimeMediaType_bg(
+    normalized.title,
+    normalized.originalTitle,
+    info
+  );
 
   return {
     id,
-    title,
-    originalTitle: smallTitle || title,
-    chineseTitle: title,
+    title: normalized.title,
+    originalTitle: normalized.originalTitle,
+    chineseTitle: normalized.chineseTitle,
     coverUrl: cover,
     description: info,
     releaseDate: year ? `${year}-01-01` : "",
-    infoText: info,
-    year: year || "",
     tmdbSearchType: mediaType
   };
 }
 
-// ==========================
-// 匹配 TMDB
-// ==========================
 async function tryMatchTmdbForBangumi_bg(item) {
-  const year = item.year || extractYear_bg(item.releaseDate || item.infoText || "");
-  const detectedType = detectItemTypeFromContent_bg(item);
-  const searchType = detectedType || item.tmdbSearchType || CONSTANTS_bg.MEDIA_TYPES.TV;
 
-  const cacheKey = [
-    normalizeCompareText_bg(item.title),
-    normalizeCompareText_bg(item.originalTitle),
-    year,
-    searchType
-  ].join("_");
+  const year = extractYear_bg(item.releaseDate || "");
+  const tmdbType = item.tmdbSearchType || CONSTANTS_bg.MEDIA_TYPES.TV;
+
+  const cacheKey =
+    `${normalizeTmdbQuery_bg(item.originalTitle)}_${normalizeTmdbQuery_bg(item.chineseTitle)}_${year}_${tmdbType}`;
 
   if (tmdbCache_bg[cacheKey]) {
-    return integrateTmdbLight_bg(item, tmdbCache_bg[cacheKey], searchType);
+    return integrateTmdbLight_bg(item,tmdbCache_bg[cacheKey],tmdbType);
   }
 
-  const tmdbDatas = await fetchTmdbDataForBangumi_bg(item, searchType);
-
-  if (!tmdbDatas || tmdbDatas.length === 0) {
-    return null;
-  }
-
-  const bestMatch = selectMatches_bg(
-    tmdbDatas,
-    item.originalTitle || item.title,
+  let tmdbRes = await searchTmdbLight_bg({
+    originalTitle:item.originalTitle,
+    chineseTitle:item.chineseTitle,
+    listTitle:item.title,
+    searchMediaType:tmdbType,
     year,
-    {
-      preferredType: searchType,
-      minThreshold: WidgetConfig_bg.MIN_MATCH_THRESHOLD,
-      bangumiItem: item
-    }
-  );
+    language:"zh-CN"
+  });
 
-  if (!bestMatch) return null;
-
-  // 只保留动画
-  if (!bestMatch.genre_ids || !bestMatch.genre_ids.includes(16)) {
-    return null;
+  if (!tmdbRes) {
+    tmdbRes = await searchTmdbLight_bg({
+      originalTitle:item.originalTitle,
+      chineseTitle:item.chineseTitle,
+      listTitle:item.title,
+      searchMediaType:tmdbType,
+      year,
+      language:"ja-JP"
+    });
   }
 
-  tmdbCache_bg[cacheKey] = bestMatch;
-  return integrateTmdbLight_bg(item, bestMatch, searchType);
+  if (!tmdbRes) return null;
+
+  tmdbCache_bg[cacheKey] = tmdbRes;
+
+  return integrateTmdbLight_bg(item,tmdbRes,tmdbType);
 }
 
-// ==========================
-// TMDB 搜索（影视榜单.js风格）
-// ==========================
-async function fetchTmdbDataForBangumi_bg(item, mediaType) {
-  let searchTypes = [];
-
-  if (mediaType === "movie") {
-    searchTypes = ["movie"];
-  } else if (mediaType === "tv") {
-    searchTypes = ["tv"];
-  } else {
-    searchTypes = ["movie", "tv"];
-  }
+async function searchTmdbLight_bg({
+  originalTitle="",
+  chineseTitle="",
+  listTitle="",
+  searchMediaType="tv",
+  year="",
+  language="zh-CN"
+}){
 
   const queries = uniqueNonEmpty_bg([
-    normalizeSearchKeyword_bg(item.originalTitle),
-    normalizeSearchKeyword_bg(item.chineseTitle),
-    normalizeSearchKeyword_bg(item.title)
+    normalizeTmdbQuery_bg(originalTitle),
+    normalizeTmdbQuery_bg(chineseTitle),
+    normalizeTmdbQuery_bg(listTitle)
   ]);
 
-  const allResults = [];
-  const seen = new Set();
+  let best=null;
+  let bestScore=-Infinity;
 
-  for (const type of searchTypes) {
-    for (const query of queries.slice(0, 3)) {
-      for (const lang of ["zh-CN", "ja-JP"]) {
-        try {
-          const params = {
-            query,
-            language: lang,
-            page: 1
-          };
+  for (const query of queries.slice(0,2)) {
 
-          if (item.year) {
-            if (type === "tv") {
-              params.first_air_date_year = parseInt(item.year, 10);
-            } else {
-              params.primary_release_year = parseInt(item.year, 10);
-            }
-          }
+    const params={
+      query,
+      language,
+      page:1
+    };
 
-          const tmdbResults = await Widget.tmdb.get(`/search/${type}`, {
-            params
-          });
-
-          const results = Array.isArray(tmdbResults?.results) ? tmdbResults.results : [];
-
-          for (const result of results) {
-            const key = `${type}_${result.id}`;
-            if (!seen.has(key)) {
-              seen.add(key);
-              allResults.push({
-                ...result,
-                media_type: type
-              });
-            }
-          }
-        } catch (e) {}
+    if (year) {
+      if (searchMediaType === "tv") {
+        params.first_air_date_year = parseInt(year);
+      } else {
+        params.primary_release_year = parseInt(year);
       }
     }
-  }
 
-  return allResults;
-}
-
-// ==========================
-// 选最佳结果（影视榜单.js风格）
-// ==========================
-function selectMatches_bg(tmdbResults, originalTitle, originalYear, options = {}) {
-  if (tmdbResults.length === 0) return null;
-
-  if (tmdbResults.length === 1) {
-    const onlyScore = calculateMatchScore_bg(
-      tmdbResults[0],
-      originalTitle,
-      originalYear,
-      options.preferredType,
-      options.bangumiItem
-    );
-    return onlyScore >= (options.minThreshold || 0) ? tmdbResults[0] : null;
-  }
-
-  const preferredType = options.preferredType || null;
-  const minThreshold = options.minThreshold || 0;
-  const bangumiItem = options.bangumiItem || null;
-
-  let bestMatch = null;
-  let bestScore = -Infinity;
-
-  for (const result of tmdbResults) {
-    const score = calculateMatchScore_bg(
-      result,
-      originalTitle,
-      originalYear,
-      preferredType,
-      bangumiItem
+    const data = await Widget.tmdb.get(
+      `/search/${searchMediaType}`,
+      {params}
     );
 
-    if (score > bestScore) {
-      bestScore = score;
-      bestMatch = result;
+    const results = data?.results || [];
+
+    for (const result of results.slice(0,8)) {
+
+      const score = calculateTmdbMatchScoreLight_bg(result,{
+        originalTitle,
+        chineseTitle,
+        listTitle,
+        year
+      });
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = result;
+      }
     }
+
+    if (bestScore >= 90) break;
   }
 
-  if (bestScore < minThreshold) return null;
-  return bestMatch;
+  if (bestScore < WidgetConfig_bg.TMDB_SEARCH_MIN_SCORE) {
+    return null;
+  }
+
+  return best;
 }
 
-// ==========================
-// 打分（影视榜单.js风格）
-// ==========================
-function calculateMatchScore_bg(result, originalTitle, originalYear, preferredType = null, bangumiItem = null) {
-  const tmdbTitle = result.title || result.name || "";
-  const originalName = result.original_title || result.original_name || "";
+function calculateTmdbMatchScoreLight_bg(result,meta){
 
-  const titleSimilarity = Math.max(
-    calculateSimilarity_bg(originalTitle, tmdbTitle),
-    calculateSimilarity_bg(originalTitle, originalName)
+  let score=0;
+
+  const resultTitle =
+    normalizeTmdbQuery_bg(result.title || result.name || "");
+
+  const resultOriginal =
+    normalizeTmdbQuery_bg(
+      result.original_title || result.original_name || ""
+    );
+
+  const q1 = normalizeTmdbQuery_bg(meta.originalTitle || "");
+  const q2 = normalizeTmdbQuery_bg(meta.chineseTitle || "");
+  const q3 = normalizeTmdbQuery_bg(meta.listTitle || "");
+
+  if (resultTitle === q1 || resultOriginal === q1) score += 80;
+  if (resultTitle === q2 || resultOriginal === q2) score += 70;
+
+  if (q1 && (resultTitle.includes(q1) || resultOriginal.includes(q1))) score += 45;
+  if (q2 && (resultTitle.includes(q2) || resultOriginal.includes(q2))) score += 35;
+  if (q3 && (resultTitle.includes(q3) || resultOriginal.includes(q3))) score += 25;
+
+  const resultYear = extractYear_bg(
+    result.release_date || result.first_air_date || ""
   );
 
-  let exactMatchBonus = 0;
-  if (titleSimilarity >= 0.98) {
-    exactMatchBonus = 2.0;
-  } else if (titleSimilarity >= 0.9) {
-    exactMatchBonus = 1.0;
+  const queryYear = extractYear_bg(meta.year || "");
+
+  if (queryYear && resultYear) {
+
+    const diff =
+      Math.abs(parseInt(queryYear) - parseInt(resultYear));
+
+    if (diff === 0) score += 35;
+    else if (diff === 1) score += 20;
+    else if (diff >= 2) score -= 20;
   }
 
-  let yearBonus = 0;
-  if (originalYear) {
-    const tmdbYear = (result.release_date || result.first_air_date || "").substring(0, 4);
-    if (tmdbYear) {
-      const diff = Math.abs(parseInt(originalYear, 10) - parseInt(tmdbYear, 10));
-      if (diff === 0) yearBonus = 0.2;
-      else if (diff === 1) yearBonus = 0.12;
-      else if (diff >= 2) yearBonus = -0.08;
-    }
-  }
-
-  let typeBonus = 0;
-  if (preferredType && result.media_type === preferredType) {
-    typeBonus += 1.0;
-  }
-
-  if (bangumiItem) {
-    if (bangumiItem.tmdbSearchType === "tv" && result.media_type === "tv") {
-      typeBonus += 0.3;
-    }
-    if (bangumiItem.tmdbSearchType === "movie" && result.media_type === "movie") {
-      typeBonus += 0.3;
-    }
-  }
-
-  let animationBonus = 0;
   if (result.genre_ids && result.genre_ids.includes(16)) {
-    animationBonus += 0.6;
+    score += 25;
   } else {
-    animationBonus -= 0.6;
+    score -= 25;
   }
 
-  const popularityBonus = Math.min((result.popularity || 0) / 10000, 0.05);
-  const ratingBonus = Math.min((result.vote_average || 0) / 200, 0.025);
-
-  return titleSimilarity + exactMatchBonus + yearBonus + typeBonus + animationBonus + popularityBonus + ratingBonus;
+  return score;
 }
 
-// ==========================
-// 相似度（影视榜单.js风格）
-// ==========================
-function calculateSimilarity_bg(str1, str2) {
-  const cleanStr1 = normalizeCompareText_bg(str1);
-  const cleanStr2 = normalizeCompareText_bg(str2);
-
-  if (!cleanStr1 || !cleanStr2) return 0;
-  if (cleanStr1 === cleanStr2) return 1.0;
-
-  const longer = cleanStr1.length > cleanStr2.length ? cleanStr1 : cleanStr2;
-  const shorter = cleanStr1.length > cleanStr2.length ? cleanStr2 : cleanStr1;
-
-  if (longer.length === 0) return 1.0;
-
-  const editDistance = getEditDistance_bg(longer, shorter);
-  return (longer.length - editDistance) / longer.length;
-}
-
-function getEditDistance_bg(str1, str2) {
-  const matrix = [];
-
-  for (let i = 0; i <= str2.length; i++) {
-    matrix[i] = [i];
-  }
-
-  for (let j = 0; j <= str1.length; j++) {
-    matrix[0][j] = j;
-  }
-
-  for (let i = 1; i <= str2.length; i++) {
-    for (let j = 1; j <= str1.length; j++) {
-      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j] + 1
-        );
-      }
-    }
-  }
-
-  return matrix[str2.length][str1.length];
-}
-
-// ==========================
-// 结果整合
-// ==========================
 function integrateTmdbLight_bg(baseItem, tmdbResult, tmdbType){
 
   const posterPath = tmdbResult.poster_path || "";
@@ -456,27 +378,19 @@ function integrateTmdbLight_bg(baseItem, tmdbResult, tmdbType){
       tmdbResult.first_air_date ||
       baseItem.releaseDate ||
       "",
-
-    // 保留原来能正常显示的字段
     coverUrl: fullCoverUrl,
-
-    // 兼容影视海报布局
     posterPath: posterPath,
     backdropPath: backdropPath,
-
     rating:
       typeof tmdbResult.vote_average === "number"
         ? Number(tmdbResult.vote_average).toFixed(1)
         : "",
-
-    mediaType: tmdbResult.media_type || tmdbType
+    mediaType: tmdbType
   };
 }
 
-// ==========================
-// 类型判断
-// ==========================
 function detectAnimeMediaType_bg(title,originalTitle,infoText){
+
   const text =
     `${title || ""} ${originalTitle || ""} ${infoText || ""}`.toLowerCase();
 
@@ -487,63 +401,35 @@ function detectAnimeMediaType_bg(title,originalTitle,infoText){
     : CONSTANTS_bg.MEDIA_TYPES.TV;
 }
 
-function detectItemTypeFromContent_bg(item) {
-  const aliases = (item.originalTitle || "").toLowerCase();
-  const description = (item.description || item.infoText || "").toLowerCase();
-  const title = (item.title || "").toLowerCase();
-
-  if (
-    aliases.includes("电影") ||
-    aliases.includes("剧场版") ||
-    title.includes("剧场版") ||
-    description.includes("剧场版")
-  ) {
-    return "movie";
-  }
-
-  if (
-    description.includes("tv") ||
-    description.includes("番剧") ||
-    (description.includes("第") && description.includes("季")) ||
-    (description.includes("全") && description.includes("集"))
-  ) {
-    return "tv";
-  }
-
-  return item.tmdbSearchType || "tv";
-}
-
-// ==========================
-// 工具函数
-// ==========================
-function extractYear_bg(text){
-  const m = String(text || "").match(/(19|20)\d{2}/);
-  return m ? m[0] : "";
-}
-
-function normalizeSearchKeyword_bg(str) {
-  let s = String(str || "").trim();
+function normalizeTitleRule_bg(title, originalTitle, infoText) {
+  let zh = title || "";
+  let orig = originalTitle || title || "";
 
   const rules = [
-    { pattern: / 第[一二三四五六七八九十0-9]+季/g, replacement: "" },
-    { pattern: /\bseason\s*\d+\b/ig, replacement: "" },
-    { pattern: /\bpart\s*\d+\b/ig, replacement: "" },
-    { pattern: /剧场版/g, replacement: "" },
-    { pattern: /總集篇|总集篇/g, replacement: "" },
-    { pattern: /完整版|完全版/g, replacement: "" }
+    { pattern: /^Charlotte$/i, zh: "Charlotte", orig: "Charlotte" },
+    { pattern: /^Kanon$/i, zh: "Kanon", orig: "Kanon" },
+    { pattern: /^AIR$/i, zh: "AIR", orig: "AIR" },
+    { pattern: /^Angel Beats!?$/i, zh: "Angel Beats!", orig: "Angel Beats!" }
   ];
 
   for (const rule of rules) {
-    s = s.replace(rule.pattern, rule.replacement);
+    if (rule.pattern.test(zh) || rule.pattern.test(orig)) {
+      zh = rule.zh;
+      orig = rule.orig;
+      break;
+    }
   }
 
-  return s.replace(/\s+/g, " ").trim();
+  return {
+    title: zh,
+    chineseTitle: zh,
+    originalTitle: orig
+  };
 }
 
-function normalizeCompareText_bg(str) {
-  return normalizeSearchKeyword_bg(str)
-    .toLowerCase()
-    .replace(/[^\u4e00-\u9fa5a-z0-9]/g, "");
+function extractYear_bg(text){
+  const m = String(text || "").match(/(19|20)\d{2}/);
+  return m ? m[0] : "";
 }
 
 function normalizeTmdbQuery_bg(str){
