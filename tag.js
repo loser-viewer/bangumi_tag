@@ -22,73 +22,6 @@ WidgetMetadata = {
             type: "input", 
             description: "输入单个动画标签如 TV, 漫画改, 原创, 搞笑, 战斗等。支持图片中显示的任意标签。留空则浏览热门标签总览。", 
             value: "", 
-            placeholders: [
-                { title: "百合", value: "百合" },
-                { title: "伪娘", value: "伪娘" },
-                { title: "搞笑", value: "搞笑" },
-                { title: "原创", value: "原创" },
-                { title: "恋爱", value: "恋爱" },
-                { title: "校园", value: "校园" },
-                { title: "战斗", value: "战斗" },
-                { title: "奇幻", value: "奇幻" },
-                { title: "漫改", value: "漫改" },
-                { title: "日常", value: "日常" },
-                { title: "青春", value: "青春" },
-                { title: "治愈", value: "治愈" },
-                { title: "后宫", value: "后宫" },
-                { title: "异世界", value: "异世界" },
-                { title: "科幻", value: "科幻" },
-                { title: "新房昭之", value: "新房昭之" },
-                { title: "虚渊玄", value: "虚渊玄" },
-                { title: "宫崎骏", value: "宫崎骏" },
-                { title: "庵野秀明", value: "庵野秀明" },
-                { title: "新海诚", value: "新海诚" },
-                { title: "汤浅政明", value: "汤浅政明" },
-                { title: "西尾维新", value: "西尾维新" },
-                { title: "今石洋之", value: "今石洋之" },
-                { title: "渡边信一郎", value: "渡边信一郎" },
-                { title: "押井守", value: "押井守" },
-                { title: "京都动画 (京阿尼)", value: "京都动画" },
-                { title: "A-1 Pictures", value: "A-1 Pictures" },
-                { title: "J.C.STAFF (节操社)", value: "J.C.STAFF" },
-                { title: "MADHOUSE", value: "MADHOUSE" },
-                { title: "BONES (骨头社)", value: "BONES" },
-                { title: "P.A.WORKS", value: "P.A.WORKS" },
-                { title: "SHAFT", value: "SHAFT" },
-                { title: "动画工房", value: "动画工房" },
-                { title: "ufotable (飞碟社)", value: "ufotable" },
-                { title: "吉卜力工作室 (吉卜力)", value: "吉卜力工作室" },
-                { title: "请输入其他任意标签...", value: "" }
-            ]
-        },
-        {
-            name: "airtime_year",
-            title: "年份 (可选)",
-            type: "input",
-            description: "输入4位年份 (如 2024)，或留空以不限年份。可像标签一样自由输入。",
-            value: ""
-        },
-        {
-            name: "airtime_month",
-            title: "月份 (可选)",
-            type: "enumeration",
-            description: "选择放送月份。仅当填写了年份时有效。",
-            value: "",
-            enumOptions: [
-                { title: "全年/不限", value: "" },
-                { title: "1月", value: "1" },
-                { title: "2月", value: "2" },
-                { title: "3月", value: "3" },
-                { title: "4月", value: "4" },
-                { title: "5月", value: "5" },
-                { title: "6月", value: "6" },
-                { title: "7月", value: "7" },
-                { title: "8月", value: "8" },
-                { title: "9月", value: "9" },
-                { title: "10月", value: "10" },
-                { title: "11月", value: "11" },
-                { title: "12月", value: "12" }
-            ]
         },
         {
             name: "sort", 
@@ -109,7 +42,23 @@ WidgetMetadata = {
 };
 
 // ===============辅助函数===============
+function buildDisplayDescription_bg(releaseDate, description, rating) {
+    const parts = [];
 
+    if (releaseDate) {
+        parts.push(`日期: ${releaseDate}`);
+    }
+
+    if (rating && String(rating).trim() !== "" && String(rating) !== "0" && String(rating) !== "N/A") {
+        parts.push(`评分: ${rating}`);
+    }
+
+    if (description && String(description).trim() !== "") {
+        parts.push(String(description).trim());
+    }
+
+    return parts.join(" ｜ ");
+}
 
 //===============BGM功能函数===============
 const WidgetConfig_bg = {
@@ -450,10 +399,16 @@ function populateItemFromTmdbFullDetail_bg(itemRef, tmdbDetail) {
     }
     itemRef.tmdb_overview = tmdbDetail.overview || itemRef.tmdb_overview || "";
     const currentDescription = String(itemRef.description || "");
-    const dayPrefixMatch = currentDescription.match(/^\[.*?\]\s*/); 
-    const dayPrefix = dayPrefixMatch ? dayPrefixMatch[0] : "";
-    const baseDescription = currentDescription.replace(/^\[.*?\]\s*/, ''); 
-    itemRef.description = `${dayPrefix}${tmdbDetail.overview || baseDescription}`.trim();
+const baseDescription = currentDescription
+    .replace(/^日期:\s*[^｜|]+[｜|]?\s*/g, "")
+    .replace(/^评分:\s*[^｜|]+[｜|]?\s*/g, "")
+    .trim();
+
+itemRef.description = buildDisplayDescription_bg(
+    itemRef.releaseDate,
+    tmdbDetail.overview || baseDescription,
+    itemRef.rating
+);
     if (tmdbDetail.genres?.length > 0) {
         itemRef.tmdb_genres = tmdbDetail.genres.map(g => g.name).join(', ');
         itemRef.genreTitle = itemRef.tmdb_genres;
@@ -951,7 +906,11 @@ function buildBaseItemStructure_bg(pendingItem, detailData) {
         releaseDate:rDate || pendingItem.air_date || '',
         mediaType:dMTWidget,
         rating:fRating || pendingItem.ratingFromList || (pendingItem.rating?.score ? pendingItem.rating.score.toFixed(1) : "0"),
-        description: pendingItem.summary ? `[${pendingItem.weekday_cn || ''}] ${pendingItem.summary}`.trim() : (pendingItem.infoTextFromList || ""),
+        description: buildDisplayDescription_bg(
+            rDate || pendingItem.air_date || "",
+            pendingItem.summary ? `[${pendingItem.weekday_cn || ''}] ${pendingItem.summary}`.trim() : (pendingItem.infoTextFromList || ""),
+            fRating || pendingItem.ratingFromList || (pendingItem.rating?.score ? pendingItem.rating.score.toFixed(1) : "0")
+        ),
         genreTitle:null,
         link:pendingItem.detailLink || pendingItem.url || `${WidgetConfig_bg.BGM_BASE_URL}/subject/${pendingItem.id}`,
         tmdb_id:null,
@@ -1063,7 +1022,11 @@ async function integrateTmdbDataToItem_bg(baseItem, tmdbResult, tmdbSearchType, 
     baseItem.backdropPath = tmdbResult.backdrop_path ? `https://image.tmdb.org/t/p/w780${tmdbResult.backdrop_path}`: '';
     baseItem.releaseDate = parseDate_bg(tmdbResult.release_date || tmdbResult.first_air_date) || originalBgmReleaseDate;
     baseItem.rating = tmdbResult.vote_average ? tmdbResult.vote_average.toFixed(1) : originalBgmRating;
-    baseItem.description = tmdbResult.overview || baseItem.description;
+    baseItem.description = buildDisplayDescription_bg(
+    baseItem.releaseDate,
+    tmdbResult.overview || "",
+    baseItem.rating
+    );
     baseItem.genreTitle = null; 
     baseItem.link = null; 
     baseItem.tmdb_origin_countries = tmdbResult.origin_country || [];
@@ -1412,7 +1375,19 @@ async function fetchItemDetails_bg(pendingItem, categoryHint, rankingContext = {
             item.releaseDate = parseDate_bg(rDateStrFromDetail) || item.releaseDate;
             item.rating = ($('#panelInterestWrapper .global_rating .number').text().trim()) || item.rating;
             const summaryFromDetail = getInfoFromBox_bg($, "简介");
-            if(summaryFromDetail) item.description = summaryFromDetail;
+            if (summaryFromDetail) {
+    item.description = buildDisplayDescription_bg(
+        item.releaseDate,
+        summaryFromDetail,
+        item.rating
+    );
+} else {
+    item.description = buildDisplayDescription_bg(
+        item.releaseDate,
+        item.description,
+        item.rating
+    );
+}
 
         } catch (htmlError) {
             console.error(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [BGM详情_极限] 获取/解析BGM HTML详情页失败 (ID ${pendingItem.id}):`, htmlError.message);
@@ -1506,57 +1481,31 @@ async function processBangumiPage_bg(url, categoryHint, currentPageString, ranki
 
 
 async function fetchBangumiTagPage_bg(params = {}) {
-    const category = CONSTANTS_bg.MEDIA_TYPES.ANIME; 
+    const category = CONSTANTS_bg.MEDIA_TYPES.ANIME;
     const tagKeyword = params.tag_keyword || "";
-    const sort = params.sort || "rank"; 
+    const sort = params.sort || "rank";
     const page = params.page || "1";
-    const airtimeYear = params.airtime_year || "";
-    const airtimeMonth = params.airtime_month || ""; 
-    let url;
 
-    let basePath = `${WidgetConfig_bg.BGM_BROWSE_URL || 'https://bangumi.tv'}/${category}/tag/`;
     const trimmedTag = tagKeyword.trim();
+    let basePath = `${WidgetConfig_bg.BGM_BROWSE_URL || 'https://bangumi.tv'}/${category}/tag/`;
 
     if (trimmedTag) {
-        basePath += `${encodeURIComponent(trimmedTag)}/`; 
-
-        if (airtimeYear && /^\d{4}$/.test(airtimeYear)) {
-            basePath += `airtime/`; 
-            let airtimeDatePath = airtimeYear; 
-
-            if (airtimeMonth && /^\d{1,2}$/.test(airtimeMonth)) {
-                const monthNum = parseInt(airtimeMonth, 10);
-                if (monthNum >= 1 && monthNum <= 12) {
-                    airtimeDatePath += `-${String(monthNum).padStart(2, '0')}`; 
-                }
-            }
-            basePath += airtimeDatePath; 
-        } else {
-            if (!basePath.endsWith('/')) {
-                basePath += '/';
-            }
-        }
-    } else {
-        if (!basePath.endsWith('/')) {
-            basePath += '/';
-        }
+        basePath += `${encodeURIComponent(trimmedTag)}/`;
     }
-    
-    url = `${basePath}?sort=${sort}&page=${page}`;
+
+    const url = `${basePath}?sort=${sort}&page=${page}`;
 
     if (WidgetConfig_bg.DEBUG_LOGGING) {
-        console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [模式] 获取 Bangumi 动画标签页: URL=${url}, Params=${JSON.stringify(params)}`); 
+        console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [模式] 获取 Bangumi 动画标签页: URL=${url}, Params=${JSON.stringify(params)}`);
     }
 
     try {
-        const tagContextInfo = { 
-            category, 
-            tag: trimmedTag || "_all_tags_", 
-            sort,
-            airtime_year: airtimeYear,
-            airtime_month: airtimeMonth
+        const tagContextInfo = {
+            category,
+            tag: trimmedTag || "_all_tags_",
+            sort
         };
-        return await processBangumiPage_bg(url, category, page, tagContextInfo, null, null); 
+        return await processBangumiPage_bg(url, category, page, tagContextInfo, null, null);
     } catch (error) {
         console.error(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [模式] fetchBangumiTagPage_bg(标签:'${tagKeyword}', 排序:${sort}, 页:${page}) 发生顶层错误:`, error.message, error.stack);
         return [];
