@@ -24,7 +24,7 @@ WidgetMetadata = {
   title: "Bangumi 动画标签",
   description: "按标签浏览 Bangumi 动画",
   author: "extract",
-  version: "1.0.2",
+  version: "1.1.0",
   requiredVersion: "0.0.1",
   modules: [
     {
@@ -79,6 +79,10 @@ async function fetchBangumiTagPage_bg(params = {}) {
   return await processBangumiTagPage_bg(url);
 }
 
+// ==========================
+// Bangumi 页面抓取
+// ==========================
+
 async function processBangumiTagPage_bg(url) {
 
   const res = await Widget.http.get(url,{
@@ -107,8 +111,7 @@ async function processBangumiTagPage_bg(url) {
     .map(parseBangumiListItem_bg)
     .filter(Boolean);
 
-  // 分批 TMDB 请求（避免过慢）
-  const batchSize = 8;
+  const batchSize = 6;
 
   for (let i = 0; i < bgmItems.length; i += batchSize) {
 
@@ -127,6 +130,10 @@ async function processBangumiTagPage_bg(url) {
 
   return list;
 }
+
+// ==========================
+// 解析 Bangumi 条目
+// ==========================
 
 function parseBangumiListItem_bg(item) {
 
@@ -153,12 +160,6 @@ function parseBangumiListItem_bg(item) {
     cover = cover.replace("/s/","/l/");
   }
 
-  const score =
-    item.match(/<span[^>]*class="fade"[^>]*>([\d.]+)<\/span>/)?.[1];
-
-  const rank =
-    item.match(/<span[^>]*class="rank"[^>]*>#?(\d+)<\/span>/)?.[1];
-
   const infoRaw =
     item.match(/<p[^>]*class="info"[^>]*>([\s\S]*?)<\/p>/)?.[1] || "";
 
@@ -173,12 +174,6 @@ function parseBangumiListItem_bg(item) {
 
   const year = extractYear_bg(info);
 
-  const descParts = [];
-
-  if (rank) descParts.push(`排名 #${rank}`);
-  if (score) descParts.push(`评分 ${score}`);
-  if (info) descParts.push(info);
-
   const mediaType = detectAnimeMediaType_bg(title,smallTitle,info);
 
   return {
@@ -188,40 +183,49 @@ function parseBangumiListItem_bg(item) {
     originalTitle: smallTitle || title,
     chineseTitle: title,
     coverUrl:cover,
-    description:descParts.join(" · "),
+    description:info,
     releaseDate: year ? `${year}-01-01` : "",
     infoText:info,
     tmdbSearchType:mediaType
   };
 }
 
+// ==========================
+// TMDB 匹配（带缓存）
+// ==========================
+
 async function tryMatchTmdbForBangumi_bg(item) {
 
   const year = extractYear_bg(item.releaseDate || item.infoText || "");
-
   const tmdbType = item.tmdbSearchType || CONSTANTS_bg.MEDIA_TYPES.TV;
 
   const cacheKey =
-    `${tmdbType}|${normalizeTmdbQuery_bg(item.originalTitle || "")}|${year || ""}`;
+    `tmdb_${tmdbType}_${normalizeTmdbQuery_bg(item.originalTitle)}_${year}`;
 
-  if (tmdbCache_bg[cacheKey]) {
-    return integrateTmdbLight_bg(item,tmdbCache_bg[cacheKey],tmdbType);
+  const cached = await getCache_bg(cacheKey);
+
+  if (cached) {
+    return integrateTmdbLight_bg(item,cached,tmdbType);
   }
 
   const tmdbRes = await searchTmdbLight_bg({
-    originalTitle:item.originalTitle || "",
-    chineseTitle:item.chineseTitle || "",
-    listTitle:item.title || "",
+    originalTitle:item.originalTitle,
+    chineseTitle:item.chineseTitle,
+    listTitle:item.title,
     searchMediaType:tmdbType,
     year
   });
 
   if (!tmdbRes) return null;
 
-  tmdbCache_bg[cacheKey] = tmdbRes;
+  await setCache_bg(cacheKey,tmdbRes,86400);
 
   return integrateTmdbLight_bg(item,tmdbRes,tmdbType);
 }
+
+// ==========================
+// TMDB 搜索
+// ==========================
 
 async function searchTmdbLight_bg({
   originalTitle="",
@@ -241,6 +245,12 @@ async function searchTmdbLight_bg({
   let bestScore=-Infinity;
 
   for (const query of queries.slice(0,3)) {
+
+    const searchKey =
+      `search_${searchMediaType}_${query}_${year}`;
+
+    const cached = await getCache_bg(searchKey);
+    if (cached) return cached;
 
     const params={
       query,
@@ -272,6 +282,10 @@ async function searchTmdbLight_bg({
       }
     }
 
+    if (best) {
+      await setCache_bg(searchKey,best,604800);
+    }
+
     if (bestScore >= 90) break;
   }
 
@@ -282,6 +296,36 @@ async function searchTmdbLight_bg({
   return best;
 }
 
+// ==========================
+// 缓存函数
+// ==========================
+
+async function getCache_bg(key) {
+
+  const mem = tmdbCache_bg[key];
+  if (mem) return mem;
+
+  const disk = await Widget.cache.get(key);
+
+  if (disk) {
+    tmdbCache_bg[key] = disk;
+    return disk;
+  }
+
+  return null;
+}
+
+async function setCache_bg(key,value,ttl){
+
+  tmdbCache_bg[key] = value;
+
+  await Widget.cache.set(key,value,ttl);
+}
+
+// ==========================
+// 工具函数
+// ==========================
+
 function calculateTmdbMatchScoreLight_bg(result,meta){
 
   let score=0;
@@ -289,25 +333,12 @@ function calculateTmdbMatchScoreLight_bg(result,meta){
   const resultTitle =
     normalizeTmdbQuery_bg(result.title || result.name || "");
 
-  const resultOriginal =
-    normalizeTmdbQuery_bg(result.original_title || result.original_name || "");
+  const query =
+    normalizeTmdbQuery_bg(meta.originalTitle || "");
 
-  const q1 = normalizeTmdbQuery_bg(meta.originalTitle || "");
-  const q2 = normalizeTmdbQuery_bg(meta.chineseTitle || "");
-  const q3 = normalizeTmdbQuery_bg(meta.listTitle || "");
+  if (resultTitle === query) score += 70;
 
-  const titleMatched =
-    (q1 && (resultTitle === q1 || resultOriginal === q1)) ||
-    (q2 && (resultTitle === q2 || resultOriginal === q2)) ||
-    (q3 && (resultTitle === q3 || resultOriginal === q3));
-
-  if (titleMatched) {
-    score += 70;
-  } else {
-    if (q1 && resultTitle.includes(q1)) score += 40;
-    if (q2 && resultTitle.includes(q2)) score += 35;
-    if (q3 && resultTitle.includes(q3)) score += 30;
-  }
+  if (resultTitle.includes(query)) score += 40;
 
   const resultYear = extractYear_bg(
     result.release_date || result.first_air_date || ""
@@ -322,7 +353,6 @@ function calculateTmdbMatchScoreLight_bg(result,meta){
 
     if (diff === 0) score += 20;
     else if (diff === 1) score += 10;
-    else if (diff >= 2) score -= 15;
   }
 
   if (result.genre_ids && result.genre_ids.includes(16)) {
@@ -334,27 +364,15 @@ function calculateTmdbMatchScoreLight_bg(result,meta){
 
 function integrateTmdbLight_bg(baseItem,tmdbResult,tmdbType){
 
-  const title =
-    tmdbResult.title ||
-    tmdbResult.name ||
-    baseItem.title;
-
-  const description =
-    tmdbResult.overview ||
-    baseItem.description ||
-    "";
-
   return {
     id:String(tmdbResult.id),
     type:"tmdb",
-    title,
-    description,
+    title:tmdbResult.title || tmdbResult.name || baseItem.title,
+    description:tmdbResult.overview || baseItem.description,
     releaseDate:
       tmdbResult.release_date ||
       tmdbResult.first_air_date ||
-      baseItem.releaseDate || "",
-    posterPath:tmdbResult.poster_path || "",
-    backdropPath:tmdbResult.backdrop_path || "",
+      baseItem.releaseDate,
     rating:
       typeof tmdbResult.vote_average === "number"
       ? Number(tmdbResult.vote_average).toFixed(1)
@@ -387,7 +405,6 @@ function normalizeTmdbQuery_bg(str){
   return String(str || "")
     .replace(/<[^>]*>/g,"")
     .replace(/[【】()（）]/g," ")
-    .replace(/[!！?？:：·•,，.。/\\|]/g," ")
     .replace(/\s+/g," ")
     .trim()
     .toLowerCase();
