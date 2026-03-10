@@ -5,7 +5,7 @@ WidgetMetadata = {
   title: "Bangumi 动画标签",
   description: "Bangumi 标签浏览 + TMDB匹配（平衡修正版）",
   author: "extract",
-  version: "1.5.1",
+  version: "1.5.2",
   requiredVersion: "0.0.1",
   modules: [
     {
@@ -195,7 +195,7 @@ function detectItemTypeFromContent_bg(item) {
 // TMDB 匹配
 // ==============================
 async function matchBangumiToTmdb_bg(item) {
-  const cacheKey = `${item.title}_${item.year}_${item.tmdbSearchType}`;
+  const cacheKey = `${item.title}_${item.originalTitle}_${item.year}_${item.tmdbSearchType}`;
 
   if (tmdbCache_bg[cacheKey]) {
     return integrateTmdbItem_bg(item, tmdbCache_bg[cacheKey]);
@@ -206,7 +206,13 @@ async function matchBangumiToTmdb_bg(item) {
   if (!candidates.length) return null;
 
   const best =
-    selectMatches_bg(candidates, item.title, item.year, item.tmdbSearchType);
+    selectMatches_bg(
+      candidates,
+      item.title,
+      item.originalTitle,
+      item.year,
+      item.tmdbSearchType
+    );
 
   if (!best) return null;
 
@@ -313,7 +319,7 @@ function generateQueries_bg(orig, title) {
 // ==============================
 // 匹配评分（平衡版）
 // ==============================
-function calculateMatchScore_bg(r, title, year, expectedType = "tv") {
+function calculateMatchScore_bg(r, title, originalTitle, year, expectedType = "tv") {
   if (r.adult === true) return -999999;
   if (r.media_type && r.media_type !== expectedType) return -999999;
 
@@ -328,33 +334,45 @@ function calculateMatchScore_bg(r, title, year, expectedType = "tv") {
   const bgmTitle =
     normalizeCompareText_bg(title);
 
-  const simTitle = calculateSimilarity_bg(title, r.title || r.name || "");
-  const simOriginal = calculateSimilarity_bg(title, r.original_title || r.original_name || "");
-  const bestSim = Math.max(simTitle, simOriginal);
+  const bgmOriginal =
+    normalizeCompareText_bg(originalTitle);
 
-  // 放宽短标题
-  if (tmdbTitle === bgmTitle || tmdbOriginal === bgmTitle) {
-    score += 160;
+  const simTitle1 = calculateSimilarity_bg(title, r.title || r.name || "");
+  const simTitle2 = calculateSimilarity_bg(title, r.original_title || r.original_name || "");
+  const simOrig1 = calculateSimilarity_bg(originalTitle, r.title || r.name || "");
+  const simOrig2 = calculateSimilarity_bg(originalTitle, r.original_title || r.original_name || "");
+
+  const bestSim = Math.max(simTitle1, simTitle2, simOrig1, simOrig2);
+
+  // 任一标题精确命中都给高分
+  if (
+    (bgmTitle && (tmdbTitle === bgmTitle || tmdbOriginal === bgmTitle)) ||
+    (bgmOriginal && (tmdbTitle === bgmOriginal || tmdbOriginal === bgmOriginal))
+  ) {
+    score += 180;
   } else if (bestSim >= 0.90) {
-    score += 100;
+    score += 110;
   } else if (bestSim >= 0.80) {
-    score += 60;
+    score += 70;
   } else if (bestSim >= 0.68) {
-    score += 25;
+    score += 30;
   } else {
     score -= 10;
   }
 
-  // 长度惩罚只对长标题启用，避免 Kanon/AIR 被误杀
-  if (bgmTitle.length >= 8) {
-    const lenDiff = Math.abs(tmdbTitle.length - bgmTitle.length);
+  // 长标题才启用长度惩罚
+  const compareBase = bgmOriginal || bgmTitle;
+  if (compareBase.length >= 8) {
+    const lenDiff1 = Math.abs(tmdbTitle.length - compareBase.length);
+    const lenDiff2 = Math.abs(tmdbOriginal.length - compareBase.length);
+    const lenDiff = Math.min(lenDiff1, lenDiff2);
+
     if (lenDiff >= 12) score -= 60;
     else if (lenDiff >= 8) score -= 35;
   }
 
   const tmdbYear =
-    (r.release_date || r.first_air_date || "")
-      .substring(0, 4);
+    (r.release_date || r.first_air_date || "").substring(0, 4);
 
   if (year && tmdbYear) {
     const diff =
@@ -427,12 +445,12 @@ function getEditDistance_bg(a, b) {
 // ==============================
 // 选最佳（阈值放低）
 // ==============================
-function selectMatches_bg(results, title, year, expectedType = "tv") {
+function selectMatches_bg(results, title, originalTitle, year, expectedType = "tv") {
   let best = null;
   let bestScore = -Infinity;
 
   for (const r of results) {
-    const s = calculateMatchScore_bg(r, title, year, expectedType);
+    const s = calculateMatchScore_bg(r, title, originalTitle, year, expectedType);
 
     if (s > bestScore) {
       bestScore = s;
