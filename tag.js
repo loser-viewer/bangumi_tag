@@ -4,7 +4,7 @@ WidgetMetadata = {
   description: "Bangumi 标签浏览 + TMDB匹配",
   author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
-  version: "1.4",
+  version: "1.4.1",
   requiredVersion: "0.0.1",
   detailCacheDuration: 60,
   modules: [
