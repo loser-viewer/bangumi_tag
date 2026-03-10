@@ -299,8 +299,11 @@ function calculateTmdbMatchScoreLight_bg(result,meta){
     else if (diff === 1) score += 15;
   }
 
+  // 动画优先
   if (result.genre_ids && result.genre_ids.includes(16)) {
-    score += 10;
+    score += 20;
+  } else {
+    score -= 20;
   }
 
   return score;
