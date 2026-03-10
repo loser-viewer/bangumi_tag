@@ -1,6 +1,6 @@
 
 WidgetMetadata = {
-  id: "bangumi_tag",
+  id: "bangumi_origin",
   title: "bangumi_tag",
   description: "聚合豆瓣、TMDB、IMDB和Bangumi的影视动画榜单",
   author: "hyl",
