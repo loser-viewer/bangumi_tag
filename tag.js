@@ -4,7 +4,7 @@ WidgetMetadata = {
   description: "Bangumi 标签浏览 + TMDB匹配",
   author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
-  version: "1.5",
+  version: "1.4",
   requiredVersion: "0.0.1",
   detailCacheDuration: 60,
   modules: [
@@ -784,6 +784,12 @@ async function searchTmdb_bg(originalTitle, chineseTitle, listTitle, searchMedia
                     if (results?.length > 0) {
                         if (WidgetConfig_bg.DEBUG_LOGGING) console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [TMDB搜索S1] ${searchIdentifierForLog} Found ${results.length} results from TMDB for query "${preciseQueryText}" with year.`);
                         for (const result of results) {
+                            if (result.adult === true) {
+                                if (WidgetConfig_bg.DEBUG_LOGGING) {
+                                    console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [TMDB过滤S1] 跳过成人结果 TMDB ID: ${result.id}, Title: "${result.title || result.name}"`);
+                                }
+                                continue;
+                            }
                             if (WidgetConfig_bg.DEBUG_LOGGING) console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [TMDB搜索S1ItemEval] ${searchIdentifierForLog} Evaluating TMDB ID: ${result.id}, Title: "${result.title || result.name}", Genres: ${JSON.stringify(result.genre_ids)}`);
                             
                             const tmdbVoteAverage_s1 = result.vote_average || 0;
@@ -853,6 +859,12 @@ async function searchTmdb_bg(originalTitle, chineseTitle, listTitle, searchMedia
                 if (searchResults?.length > 0) {
                     if (WidgetConfig_bg.DEBUG_LOGGING) console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [TMDB搜索S2] ${searchIdentifierForLog} Found ${searchResults.length} results from TMDB for query "${query}".`);
                     for (const result of searchResults) {
+                        if (result.adult === true) {
+                            if (WidgetConfig_bg.DEBUG_LOGGING) {
+                                console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [TMDB过滤S2] 跳过成人结果 TMDB ID: ${result.id}, Title: "${result.title || result.name}"`);
+                            }
+                            continue;
+                        }
                         if (WidgetConfig_bg.DEBUG_LOGGING) console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [TMDB搜索S2ItemEval] ${searchIdentifierForLog} Query:"${query}", Evaluating TMDB ID: ${result.id}, Title: "${result.title || result.name}", Genres: ${JSON.stringify(result.genre_ids)}`);
                         
                         const tmdbVoteAverage_s2 = result.vote_average || 0;
