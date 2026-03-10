@@ -4,7 +4,7 @@ WidgetMetadata = {
   description: "Bangumi 标签浏览 + TMDB匹配",
   author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
-  version: "1.2",
+  version: "1.3",
   requiredVersion: "0.0.1",
   detailCacheDuration: 60,
   modules: [
@@ -394,11 +394,77 @@ function parseDate_bg(dateStr) { if (!dateStr || typeof dateStr !== 'string') re
 
 function populateItemFromTmdbFullDetail_bg(itemRef, tmdbDetail) {
     if (!tmdbDetail) {
-        if (WidgetConfig_bg.DEBUG_LOGGING) console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [TMDB填充工具] 未提供TMDB详情对象（TMDB ID ${itemRef.tmdb_id || 'N/A'}, BGM ID ${itemRef.link?.split('/').pop() || itemRef.id}）。`);
+        if (WidgetConfig_bg.DEBUG_LOGGING) {
+            console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [TMDB填充工具] 未提供TMDB详情对象（TMDB ID ${itemRef.tmdb_id || 'N/A'}, BGM ID ${itemRef.link?.split('/').pop() || itemRef.id}）。`);
+        }
         return;
     }
+
+    const newReleaseDate =
+        parseDate_bg(tmdbDetail.release_date || tmdbDetail.first_air_date) || itemRef.releaseDate;
+
+    const newRating =
+        tmdbDetail.vote_average ? tmdbDetail.vote_average.toFixed(1) : itemRef.rating;
+
+    itemRef.releaseDate = newReleaseDate;
+    itemRef.rating = newRating;
     itemRef.tmdb_overview = tmdbDetail.overview || itemRef.tmdb_overview || "";
+
     const currentDescription = String(itemRef.description || "");
+    const baseDescription = currentDescription
+        .replace(/^日期:\s*[^｜|]+[｜|]?\s*/g, "")
+        .replace(/^评分:\s*[^｜|]+[｜|]?\s*/g, "")
+        .trim();
+
+    itemRef.description = buildDisplayDescription_bg(
+        newReleaseDate,
+        tmdbDetail.overview || baseDescription,
+        newRating
+    );
+
+    if (tmdbDetail.genres?.length > 0) {
+        itemRef.tmdb_genres = tmdbDetail.genres.map(g => g.name).join(', ');
+        itemRef.genreTitle = itemRef.tmdb_genres;
+    }
+
+    itemRef.tmdb_tagline = tmdbDetail.tagline || "";
+    itemRef.tmdb_status = tmdbDetail.status || "";
+    itemRef.tmdb_original_title = tmdbDetail.original_title || tmdbDetail.original_name || "";
+
+    if (tmdbDetail.origin_country && Array.isArray(tmdbDetail.origin_country) && tmdbDetail.origin_country.length > 0) {
+        itemRef.tmdb_origin_countries = tmdbDetail.origin_country;
+    } else if (tmdbDetail.production_countries && Array.isArray(tmdbDetail.production_countries) && tmdbDetail.production_countries.length > 0) {
+        itemRef.tmdb_origin_countries = tmdbDetail.production_countries.map(pc => pc.iso_3166_1);
+    } else if (!itemRef.tmdb_origin_countries || itemRef.tmdb_origin_countries.length === 0) {
+        itemRef.tmdb_origin_countries = [];
+    }
+
+    if (typeof tmdbDetail.vote_count === 'number') {
+        itemRef.tmdb_vote_count = tmdbDetail.vote_count;
+    }
+
+    let bestChineseTitleFromTmdb = '';
+    if (tmdbDetail.translations?.translations) {
+        const chineseTranslation = tmdbDetail.translations.translations.find(
+            t => t.iso_639_1 === 'zh' && t.iso_3166_1 === 'CN' && t.data && (t.data.title || t.data.name)
+        );
+        if (chineseTranslation) {
+            bestChineseTitleFromTmdb = (chineseTranslation.data.title || chineseTranslation.data.name).trim();
+        }
+    }
+
+    itemRef.tmdb_preferred_title = bestChineseTitleFromTmdb || itemRef.title;
+    if (bestChineseTitleFromTmdb && bestChineseTitleFromTmdb !== itemRef.title) {
+        if (WidgetConfig_bg.DEBUG_LOGGING) {
+            console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [TMDB填充工具] 更新 TMDB ID ${itemRef.tmdb_id} 的主标题为 TMDB 中文翻译: "${bestChineseTitleFromTmdb.substring(0,30)}..." (原 BGM 链接 ID: ${itemRef.link?.split('/').pop() || 'N/A'})`);
+        }
+        itemRef.title = bestChineseTitleFromTmdb;
+    }
+
+    if (WidgetConfig_bg.DEBUG_LOGGING) {
+        console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [TMDB填充工具] 条目 (TMDB ID ${itemRef.tmdb_id}) 已从完整详情填充。`);
+    }
+}
 const baseDescription = currentDescription
     .replace(/^日期:\s*[^｜|]+[｜|]?\s*/g, "")
     .replace(/^评分:\s*[^｜|]+[｜|]?\s*/g, "")
@@ -1292,8 +1358,6 @@ async function fetchItemDetails_bg(pendingItem, categoryHint, rankingContext = {
                     }
                     item.posterPath = tmdbDetail.poster_path ? `https://image.tmdb.org/t/p/w500${tmdbDetail.poster_path}` : item.posterPath;
                     item.backdropPath = tmdbDetail.backdrop_path ? `https://image.tmdb.org/t/p/w780${tmdbDetail.backdrop_path}`: '';
-                    item.releaseDate = parseDate_bg(tmdbDetail.release_date || tmdbDetail.first_air_date) || item.releaseDate;
-                    item.rating = tmdbDetail.vote_average ? tmdbDetail.vote_average.toFixed(1) : item.rating;
                     item.link = null; 
 
                     if (WidgetConfig_bg.DEBUG_LOGGING) {
