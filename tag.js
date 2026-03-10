@@ -1,16 +1,11 @@
-// =============UserScript=============
-// @name         影视聚合查询组件
-// @version      1.3.1
-// @description  聚合查询豆瓣/TMDB/IMDB/BGM影视数据
-// @author       阿米诺斯
-// =============UserScript=============
+
 WidgetMetadata = {
-  id: "forward.combined.media.lists",
+  id: "bangumi_tag",
   title: "影视榜单",
   description: "聚合豆瓣、TMDB、IMDB和Bangumi的影视动画榜单",
-  author: "阿米诺斯",
+  author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
-  version: "1.3.1",
+  version: "1.0",
   requiredVersion: "0.0.1",
   detailCacheDuration: 60,
   modules: [
