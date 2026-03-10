@@ -6,7 +6,7 @@ const CONSTANTS_bg = {
     MOVIE: "movie"
   },
   SHORT_FILM_KEYWORDS: [
-    "剧场版","电影","movie","总集篇","完结篇","短片","OVA","OAD"
+    "剧场版", "电影", "movie", "总集篇", "完结篇", "短片", "OVA", "OAD"
   ]
 };
 
@@ -14,7 +14,7 @@ const WidgetConfig_bg = {
   BGM_BASE_URL: "https://bgm.tv",
   BGM_TAG_URL: "https://bgm.tv/anime/tag",
   TMDB_IMAGE_BASE: "https://image.tmdb.org/t/p/w500",
-  TMDB_SEARCH_MIN_SCORE: 65
+  TMDB_SEARCH_MIN_SCORE: 0.72
 };
 
 WidgetMetadata = {
@@ -22,7 +22,7 @@ WidgetMetadata = {
   title: "Bangumi 动画标签",
   description: "按标签浏览 Bangumi 动画",
   author: "extract",
-  version: "1.2.0",
+  version: "1.3.0",
   requiredVersion: "0.0.1",
   modules: [
     {
@@ -63,7 +63,6 @@ WidgetMetadata = {
 const tmdbCache_bg = {};
 
 async function fetchBangumiTagPage_bg(params = {}) {
-
   const tag = (params.tag_keyword || "").trim();
   const sort = params.sort || "rank";
   const page = parseInt(params.page, 10) || 1;
@@ -77,11 +76,10 @@ async function fetchBangumiTagPage_bg(params = {}) {
 }
 
 async function processBangumiTagPage_bg(url) {
-
-  const res = await Widget.http.get(url,{
-    headers:{
+  const res = await Widget.http.get(url, {
+    headers: {
       "User-Agent":
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)"
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)"
     }
   });
 
@@ -100,13 +98,13 @@ async function processBangumiTagPage_bg(url) {
   const items =
     listBlock.match(/<li[^>]*class="[^"]*\bitem\b[^"]*"[^>]*>[\s\S]*?<\/li>/g) || [];
 
-  const bgmItems =
-    items.map(parseBangumiListItem_bg).filter(Boolean);
+  const bgmItems = items
+    .map(parseBangumiListItem_bg)
+    .filter(Boolean);
 
-  const batchSize = 6;
+  const batchSize = 10;
 
   for (let i = 0; i < bgmItems.length; i += batchSize) {
-
     const batch = bgmItems.slice(i, i + batchSize);
 
     const results = await Promise.all(
@@ -122,7 +120,6 @@ async function processBangumiTagPage_bg(url) {
 }
 
 function parseBangumiListItem_bg(item) {
-
   const id = item.match(/\/subject\/(\d+)/)?.[1];
 
   let title =
@@ -135,17 +132,18 @@ function parseBangumiListItem_bg(item) {
   if (!id || !title) return null;
 
   let cover =
-    item.match(/<img[^>]+src="([^"]+)"/)?.[1];
+    item.match(/<img[^>]+src="([^"]+)"/)?.[1] ||
+    item.match(/<img[^>]+data-cfsrc="([^"]+)"/)?.[1] ||
+    "";
 
   cover = normalizeUrl_bg(cover);
-
-  if (cover) cover = cover.replace("/s/","/l/");
+  if (cover) cover = cover.replace("/s/", "/l/");
 
   const infoRaw =
     item.match(/<p[^>]*class="info"[^>]*>([\s\S]*?)<\/p>/)?.[1] || "";
 
   const info =
-    decodeHtml_bg(stripTags_bg(infoRaw)).replace(/\s+/g," ").trim();
+    decodeHtml_bg(stripTags_bg(infoRaw)).replace(/\s+/g, " ").trim();
 
   const smallTitleRaw =
     item.match(/<small[^>]*class="grey"[^>]*>([\s\S]*?)<\/small>/)?.[1] || "";
@@ -154,38 +152,42 @@ function parseBangumiListItem_bg(item) {
     decodeHtml_bg(stripTags_bg(smallTitleRaw)).trim();
 
   const year = extractYear_bg(info);
-
-  const mediaType = detectAnimeMediaType_bg(title,smallTitle,info);
+  const mediaType = detectAnimeMediaType_bg(title, smallTitle, info);
 
   return {
     id,
+    bgm_id: id,
     title,
     originalTitle: smallTitle || title,
     chineseTitle: title,
-    coverUrl:cover,
-    description:info,
+    coverUrl: cover,
+    description: info,
     releaseDate: year ? `${year}-01-01` : "",
-    tmdbSearchType:mediaType
+    infoText: info,
+    tmdbSearchType: mediaType
   };
 }
 
 async function tryMatchTmdbForBangumi_bg(item) {
-
-  const year = extractYear_bg(item.releaseDate || "");
+  const year = extractYear_bg(item.releaseDate || item.infoText || "");
   const tmdbType = item.tmdbSearchType || CONSTANTS_bg.MEDIA_TYPES.TV;
 
-  const cacheKey =
-    `${normalizeTmdbQuery_bg(item.originalTitle)}_${year}`;
+  const cacheKey = [
+    normalizeTmdbQuery_bg(item.originalTitle),
+    normalizeTmdbQuery_bg(item.chineseTitle),
+    tmdbType,
+    year
+  ].join("_");
 
   if (tmdbCache_bg[cacheKey]) {
-    return integrateTmdbLight_bg(item,tmdbCache_bg[cacheKey],tmdbType);
+    return integrateTmdbLight_bg(item, tmdbCache_bg[cacheKey], tmdbType);
   }
 
   const tmdbRes = await searchTmdbLight_bg({
-    originalTitle:item.originalTitle,
-    chineseTitle:item.chineseTitle,
-    listTitle:item.title,
-    searchMediaType:tmdbType,
+    originalTitle: item.originalTitle,
+    chineseTitle: item.chineseTitle,
+    listTitle: item.title,
+    searchMediaType: tmdbType,
     year
   });
 
@@ -193,146 +195,221 @@ async function tryMatchTmdbForBangumi_bg(item) {
 
   tmdbCache_bg[cacheKey] = tmdbRes;
 
-  return integrateTmdbLight_bg(item,tmdbRes,tmdbType);
+  return integrateTmdbLight_bg(item, tmdbRes, tmdbType);
 }
 
 async function searchTmdbLight_bg({
-  originalTitle="",
-  chineseTitle="",
-  listTitle="",
-  searchMediaType="tv",
-  year=""
-}){
-
+  originalTitle = "",
+  chineseTitle = "",
+  listTitle = "",
+  searchMediaType = "tv",
+  year = ""
+}) {
   const queries = uniqueNonEmpty_bg([
-    normalizeTmdbQuery_bg(originalTitle),
-    normalizeTmdbQuery_bg(chineseTitle),
-    normalizeTmdbQuery_bg(listTitle)
+    normalizeSearchKeyword_bg(originalTitle),
+    normalizeSearchKeyword_bg(chineseTitle),
+    normalizeSearchKeyword_bg(listTitle)
   ]);
 
-  let best=null;
-  let bestScore=-Infinity;
+  let allResults = [];
+  const tried = new Set();
 
-  for (const query of queries.slice(0,2)) {
+  const searchTypes =
+    searchMediaType === CONSTANTS_bg.MEDIA_TYPES.MOVIE
+      ? [CONSTANTS_bg.MEDIA_TYPES.MOVIE, CONSTANTS_bg.MEDIA_TYPES.TV]
+      : [CONSTANTS_bg.MEDIA_TYPES.TV, CONSTANTS_bg.MEDIA_TYPES.MOVIE];
 
-    const params={
-      query,
-      language:"zh-CN",
-      page:1
-    };
+  for (const type of searchTypes) {
+    for (const query of queries.slice(0, 3)) {
+      const key = `${type}:${query}`;
+      if (!query || tried.has(key)) continue;
+      tried.add(key);
 
-    if (year) {
-      if (searchMediaType === "tv") {
-        params.first_air_date_year = parseInt(year);
-      } else {
-        params.primary_release_year = parseInt(year);
+      const params = {
+        query,
+        language: "zh-CN",
+        page: 1
+      };
+
+      if (year) {
+        if (type === CONSTANTS_bg.MEDIA_TYPES.TV) {
+          params.first_air_date_year = parseInt(year, 10);
+        } else {
+          params.primary_release_year = parseInt(year, 10);
+        }
       }
+
+      try {
+        const data = await Widget.tmdb.get(`/search/${type}`, { params });
+        const results = Array.isArray(data?.results) ? data.results : [];
+
+        allResults.push(
+          ...results.map(result => ({
+            ...result,
+            media_type: type
+          }))
+        );
+      } catch (e) {}
     }
-
-    const data = await Widget.tmdb.get(
-      `/search/${searchMediaType}`,
-      {params}
-    );
-
-    const results = data?.results || [];
-
-    for (const result of results.slice(0,8)) {
-
-      const score = calculateTmdbMatchScoreLight_bg(result,{
-        originalTitle,
-        chineseTitle,
-        listTitle,
-        year
-      });
-
-      if (score > bestScore) {
-        bestScore = score;
-        best = result;
-      }
-    }
-
-    if (bestScore >= 90) break;
   }
 
-  if (bestScore < WidgetConfig_bg.TMDB_SEARCH_MIN_SCORE) {
+  if (allResults.length === 0) return null;
+
+  const bestMatch = selectMatches_bg(
+    allResults,
+    originalTitle || chineseTitle || listTitle,
+    year,
+    {
+      preferredType: searchMediaType,
+      minThreshold: WidgetConfig_bg.TMDB_SEARCH_MIN_SCORE
+    }
+  );
+
+  return bestMatch;
+}
+
+function selectMatches_bg(tmdbResults, originalTitle, originalYear, options = {}) {
+  if (!tmdbResults || tmdbResults.length === 0) return null;
+  if (tmdbResults.length === 1) {
+    const only = tmdbResults[0];
+    const onlyScore = calculateMatchScore_bg(only, originalTitle, originalYear, options.preferredType);
+    return onlyScore >= (options.minThreshold || 0) ? only : null;
+  }
+
+  const preferredType = options.preferredType || null;
+  const minThreshold = options.minThreshold || 0;
+
+  let bestMatch = null;
+  let bestScore = -Infinity;
+
+  for (const result of tmdbResults) {
+    const score = calculateMatchScore_bg(result, originalTitle, originalYear, preferredType);
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = result;
+    }
+  }
+
+  if (bestScore < minThreshold) return null;
+  return bestMatch;
+}
+
+function calculateMatchScore_bg(result, originalTitle, originalYear, preferredType = null) {
+  const tmdbTitle = result.title || result.name || "";
+  const originalName = result.original_title || result.original_name || "";
+
+  const titleSimilarity = Math.max(
+    calculateSimilarity_bg(originalTitle, tmdbTitle),
+    calculateSimilarity_bg(originalTitle, originalName)
+  );
+
+  let exactMatchBonus = 0;
+  if (titleSimilarity >= 0.98) {
+    exactMatchBonus = 2.0;
+  } else if (titleSimilarity >= 0.9) {
+    exactMatchBonus = 1.0;
+  }
+
+  let yearBonus = 0;
+  if (originalYear) {
+    const tmdbYear = (result.release_date || result.first_air_date || "").substring(0, 4);
+    if (tmdbYear) {
+      const diff = Math.abs(parseInt(originalYear, 10) - parseInt(tmdbYear, 10));
+      if (diff === 0) yearBonus = 0.25;
+      else if (diff === 1) yearBonus = 0.12;
+      else if (diff >= 2) yearBonus = -0.08;
+    }
+  }
+
+  let typeBonus = 0;
+  if (preferredType && result.media_type === preferredType) {
+    typeBonus = 1.0;
+  }
+
+  let animationBonus = 0;
+  if (result.genre_ids && result.genre_ids.includes(16)) {
+    animationBonus = 0.4;
+  } else {
+    animationBonus = -0.35;
+  }
+
+  const popularityBonus = Math.min((result.popularity || 0) / 10000, 0.05);
+  const ratingBonus = Math.min((result.vote_average || 0) / 200, 0.025);
+
+  return titleSimilarity + exactMatchBonus + yearBonus + typeBonus + animationBonus + popularityBonus + ratingBonus;
+}
+
+function calculateSimilarity_bg(str1, str2) {
+  const cleanStr1 = normalizeCompareText_bg(str1);
+  const cleanStr2 = normalizeCompareText_bg(str2);
+
+  if (!cleanStr1 || !cleanStr2) return 0;
+  if (cleanStr1 === cleanStr2) return 1.0;
+
+  const longer = cleanStr1.length > cleanStr2.length ? cleanStr1 : cleanStr2;
+  const shorter = cleanStr1.length > cleanStr2.length ? cleanStr2 : cleanStr1;
+
+  if (longer.length === 0) return 1.0;
+
+  const editDistance = getEditDistance_bg(longer, shorter);
+  return (longer.length - editDistance) / longer.length;
+}
+
+function getEditDistance_bg(str1, str2) {
+  const matrix = [];
+
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i];
+  }
+
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j;
+  }
+
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+
+  return matrix[str2.length][str1.length];
+}
+
+function integrateTmdbLight_bg(baseItem, tmdbResult, tmdbType) {
+  if (!tmdbResult.genre_ids || !tmdbResult.genre_ids.includes(16)) {
     return null;
   }
 
-  return best;
-}
-
-function calculateTmdbMatchScoreLight_bg(result,meta){
-
-  let score=0;
-
-  const resultTitle =
-    normalizeTmdbQuery_bg(result.title || result.name || "");
-
-  const resultOriginal =
-    normalizeTmdbQuery_bg(
-      result.original_title || result.original_name || ""
-    );
-
-  const q1 = normalizeTmdbQuery_bg(meta.originalTitle || "");
-  const q2 = normalizeTmdbQuery_bg(meta.chineseTitle || "");
-  const q3 = normalizeTmdbQuery_bg(meta.listTitle || "");
-
-  if (resultTitle === q1 || resultOriginal === q1) score += 80;
-  if (resultTitle === q2 || resultOriginal === q2) score += 70;
-
-  if (resultTitle.includes(q1) || resultOriginal.includes(q1)) score += 45;
-  if (resultTitle.includes(q2) || resultOriginal.includes(q2)) score += 35;
-  if (resultTitle.includes(q3) || resultOriginal.includes(q3)) score += 25;
-
-  const resultYear = extractYear_bg(
-    result.release_date || result.first_air_date || ""
-  );
-
-  const queryYear = extractYear_bg(meta.year || "");
-
-  if (queryYear && resultYear) {
-
-    const diff =
-      Math.abs(parseInt(queryYear) - parseInt(resultYear));
-
-    if (diff === 0) score += 25;
-    else if (diff === 1) score += 15;
-  }
-
-  // 动画优先
-  if (result.genre_ids && result.genre_ids.includes(16)) {
-    score += 20;
-  } else {
-    score -= 20;
-  }
-
-  return score;
-}
-
-function integrateTmdbLight_bg(baseItem,tmdbResult,tmdbType){
-
   return {
-    id:String(tmdbResult.id),
-    type:"tmdb",
-    title:tmdbResult.title || tmdbResult.name || baseItem.title,
-    description:tmdbResult.overview || baseItem.description,
+    id: String(tmdbResult.id),
+    type: "tmdb",
+    title: tmdbResult.title || tmdbResult.name || baseItem.title,
+    description: tmdbResult.overview || baseItem.description,
     releaseDate:
       tmdbResult.release_date ||
       tmdbResult.first_air_date ||
       baseItem.releaseDate,
     rating:
       typeof tmdbResult.vote_average === "number"
-      ? Number(tmdbResult.vote_average).toFixed(1)
-      : "",
-    mediaType:tmdbType,
-    coverUrl:tmdbResult.poster_path
+        ? Number(tmdbResult.vote_average).toFixed(1)
+        : "",
+    mediaType: tmdbType,
+    coverUrl: tmdbResult.poster_path
       ? `${WidgetConfig_bg.TMDB_IMAGE_BASE}${tmdbResult.poster_path}`
       : baseItem.coverUrl
   };
 }
 
-function detectAnimeMediaType_bg(title,originalTitle,infoText){
-
+function detectAnimeMediaType_bg(title, originalTitle, infoText) {
   const text =
     `${title || ""} ${originalTitle || ""} ${infoText || ""}`.toLowerCase();
 
@@ -343,42 +420,66 @@ function detectAnimeMediaType_bg(title,originalTitle,infoText){
     : CONSTANTS_bg.MEDIA_TYPES.TV;
 }
 
-function extractYear_bg(text){
+function extractYear_bg(text) {
   const m = String(text || "").match(/(19|20)\d{2}/);
   return m ? m[0] : "";
 }
 
-function normalizeTmdbQuery_bg(str){
+function normalizeSearchKeyword_bg(str) {
   return String(str || "")
-    .replace(/<[^>]*>/g,"")
-    .replace(/[【】()（）]/g," ")
-    .replace(/\s+/g," ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/[【】\[\]（）()]/g, " ")
+    .replace(/[!！?？:：·•,，.。/\\|]/g, " ")
+    .replace(/\bseason\s*\d+\b/ig, " ")
+    .replace(/\bpart\s*\d+\b/ig, " ")
+    .replace(/第\s*\d+\s*季/g, " ")
+    .replace(/第\s*\d+\s*期/g, " ")
+    .replace(/第\s*\d+\s*部/g, " ")
+    .replace(/第\s*\d+\s*卷/g, " ")
+    .replace(/剧场版/g, " ")
+    .replace(/總集篇|总集篇/g, " ")
+    .replace(/完整版|完全版/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeCompareText_bg(str) {
+  return String(str || "")
+    .toLowerCase()
+    .replace(/[^\u4e00-\u9fa5a-z0-9]/g, "");
+}
+
+function normalizeTmdbQuery_bg(str) {
+  return String(str || "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/[【】()（）]/g, " ")
+    .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
 }
 
-function uniqueNonEmpty_bg(arr){
+function uniqueNonEmpty_bg(arr) {
   return [...new Set(arr.filter(Boolean))];
 }
 
-function stripTags_bg(str){
-  return (str || "").replace(/<[^>]*>/g,"");
+function stripTags_bg(str) {
+  return (str || "").replace(/<[^>]*>/g, "");
 }
 
-function normalizeUrl_bg(url){
+function normalizeUrl_bg(url) {
   if (!url) return "";
   if (url.startsWith("//")) return "https:" + url;
   if (url.startsWith("/")) return WidgetConfig_bg.BGM_BASE_URL + url;
   return url;
 }
 
-function decodeHtml_bg(str){
+function decodeHtml_bg(str) {
   if (!str) return "";
   return str
-    .replace(/&amp;/g,"&")
-    .replace(/&lt;/g,"<")
-    .replace(/&gt;/g,">")
-    .replace(/&quot;/g,'"')
-    .replace(/&#39;/g,"'")
-    .replace(/&nbsp;/g," ");
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ");
 }
