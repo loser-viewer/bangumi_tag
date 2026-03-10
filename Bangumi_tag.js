@@ -15,7 +15,7 @@ WidgetMetadata = {
   title: "Bangumi 动画标签",
   description: "按标签浏览 Bangumi 动画",
   author: "extract",
-  version: "1.0",
+  version: "1.1",
   requiredVersion: "0.0.1",
   modules: [
     {
@@ -30,25 +30,6 @@ WidgetMetadata = {
           title: "动画标签",
           type: "input",
           value: ""
-        },
-        {
-          name: "airtime_year",
-          title: "年份",
-          type: "input",
-          value: ""
-        },
-        {
-          name: "airtime_month",
-          title: "月份",
-          type: "enumeration",
-          value: "",
-          enumOptions: [
-            { title: "全年", value: "" },
-            { title: "1月", value: "1" },
-            { title: "4月", value: "4" },
-            { title: "7月", value: "7" },
-            { title: "10月", value: "10" }
-          ]
         },
         {
           name: "sort",
@@ -72,82 +53,81 @@ WidgetMetadata = {
 // Bangumi 标签入口
 // ==========================
 async function fetchBangumiTagPage_bg(params = {}) {
-
-  const tag = params.tag_keyword || "";
-  const year = params.airtime_year || "";
-  const month = params.airtime_month || "";
+  const tag = (params.tag_keyword || "").trim();
   const sort = params.sort || "rank";
   const page = parseInt(params.page) || 1;
 
-  const category = CONSTANTS_bg.MEDIA_TYPES.ANIME;
-
-  let url = WidgetConfig_bg.BGM_BROWSE_URL;
-
-  if (tag) {
-    url += `/tag/${encodeURIComponent(tag)}`;
+  if (!tag) {
+    return [];
   }
 
-  if (year) {
-    if (month) {
-      url += `/airtime/${year}-${month}`;
-    } else {
-      url += `/airtime/${year}`;
-    }
-  }
+  const url =
+    `${WidgetConfig_bg.BGM_BROWSE_URL}/tag/${encodeURIComponent(tag)}?sort=${encodeURIComponent(sort)}&page=${page}`;
 
-  url += `?sort=${sort}&page=${page}`;
-
-  return await processBangumiPage_bg(url, category, page);
+  return await processBangumiPage_bg(url, page);
 }
 
 // ==========================
 // Bangumi 页面解析
 // ==========================
-async function processBangumiPage_bg(url, category, page) {
-
-  const res = await Widget.http.get(url,{
-    headers:{
-      "User-Agent":
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)"
+async function processBangumiPage_bg(url, page) {
+  const res = await Widget.http.get(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)"
     }
   });
 
-  const html = res.data;
-
+  const html = res.data || "";
   const list = [];
 
-  const regex = /<li class="item[\s\S]*?<\/li>/g;
-  let match;
+  // 更宽松地匹配条目块
+  const items = html.match(/<li class="item[\s\S]*?<\/li>/g) || [];
 
-  while ((match = regex.exec(html)) !== null) {
+  for (const item of items) {
+    const id = item.match(/\/subject\/(\d+)/)?.[1] || "";
 
-    const item = match[0];
+    // 优先取 h3 中的 title，再回退到链接文字
+    let title =
+      item.match(/<h3>[\s\S]*?title="([^"]+)"/)?.[1] ||
+      item.match(/<h3>[\s\S]*?<a[^>]*>([\s\S]*?)<\/a>/)?.[1] ||
+      "";
 
-    const id =
-      item.match(/\/subject\/(\d+)/)?.[1];
+    title = title.replace(/<[^>]+>/g, "").trim();
 
-    const title =
-      item.match(/title="([^"]+)"/)?.[1];
+    let cover =
+      item.match(/<img[^>]+src="([^"]+)"/)?.[1] || "";
 
-    const cover =
-      item.match(/<img[^>]+src="([^"]+)"/)?.[1];
+    if (cover.startsWith("//")) {
+      cover = "https:" + cover;
+    } else if (cover.startsWith("/")) {
+      cover = "https://bgm.tv" + cover;
+    }
 
     const score =
-      item.match(/<span class="fade">([\d.]+)<\/span>/)?.[1];
+      item.match(/<span class="fade">([\d.]+)<\/span>/)?.[1] || "";
 
     const info =
       item.match(/<p class="info">([\s\S]*?)<\/p>/)?.[1]
-        ?.replace(/<[^>]+>/g,"")
-        ?.trim();
+        ?.replace(/<[^>]+>/g, "")
+        ?.replace(/\s+/g, " ")
+        ?.trim() || "";
+
+    const rank =
+      item.match(/<span class="rank">#(\d+)<\/span>/)?.[1] || "";
+
+    let descriptionParts = [];
+    if (rank) descriptionParts.push(`排名 #${rank}`);
+    if (score) descriptionParts.push(`评分 ${score}`);
+    if (info) descriptionParts.push(info);
+
+    if (!id || !title) continue;
 
     list.push({
-      id: id,
+      id,
       type: "bangumi",
-      title: title,
-      coverUrl: cover?.replace("/s/","/l/"),
-      description:
-        (score ? `评分 ${score}` : "") +
-        (info ? ` · ${info}` : "")
+      title,
+      coverUrl: cover ? cover.replace("/s/", "/l/") : "",
+      description: descriptionParts.join(" · ")
     });
   }
 
