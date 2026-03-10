@@ -20,9 +20,9 @@ const WidgetConfig_bg = {
 WidgetMetadata = {
   id: "forward.bangumi.simple.tag.tmdb",
   title: "Bangumi 动画标签",
-  description: "按标签、年份、月份浏览 Bangumi 动画",
+  description: "按标签浏览 Bangumi 动画",
   author: "extract",
-  version: "1.2.3",
+  version: "1.2.5",
   requiredVersion: "0.0.1",
   modules: [
     {
@@ -37,25 +37,6 @@ WidgetMetadata = {
           title: "动画标签",
           type: "input",
           value: ""
-        },
-        {
-          name: "airtime_year",
-          title: "年份",
-          type: "input",
-          value: ""
-        },
-        {
-          name: "airtime_month",
-          title: "月份",
-          type: "enumeration",
-          value: "",
-          enumOptions: [
-            { title: "全年", value: "" },
-            { title: "1月", value: "1" },
-            { title: "4月", value: "4" },
-            { title: "7月", value: "7" },
-            { title: "10月", value: "10" }
-          ]
         },
         {
           name: "sort",
@@ -84,26 +65,13 @@ const tmdbCache_bg = {};
 async function fetchBangumiTagPage_bg(params = {}) {
 
   const tag = (params.tag_keyword || "").trim();
-  const year = (params.airtime_year || "").trim();
-  const month = params.airtime_month || "";
   const sort = params.sort || "rank";
   const page = parseInt(params.page, 10) || 1;
 
-  let url = WidgetConfig_bg.BGM_BASE_URL + "/anime";
+  if (!tag) return [];
 
-  if (tag) {
-    url += `/tag/${encodeURIComponent(tag)}`;
-  }
-
-  if (year) {
-    if (month) {
-      url += `/airtime/${year}-${month}`;
-    } else {
-      url += `/airtime/${year}`;
-    }
-  }
-
-  url += `?sort=${encodeURIComponent(sort)}&page=${page}`;
+  const url =
+    `${WidgetConfig_bg.BGM_TAG_URL}/${encodeURIComponent(tag)}?sort=${encodeURIComponent(sort)}&page=${page}`;
 
   return await processBangumiTagPage_bg(url);
 }
@@ -188,6 +156,7 @@ function parseBangumiListItem_bg(item) {
   const normalized = normalizeTitleRule_bg(title, smallTitle, info);
 
   const year = extractYear_bg(info);
+  const month = extractMonth_bg(info);
 
   const mediaType = detectAnimeMediaType_bg(
     normalized.title,
@@ -202,18 +171,21 @@ function parseBangumiListItem_bg(item) {
     chineseTitle: normalized.chineseTitle,
     coverUrl: cover,
     description: info,
-    releaseDate: year ? `${year}-01-01` : "",
+    releaseDate: year ? `${year}-${String(month || 1).padStart(2, "0")}-01` : "",
+    year: year,
+    month: month,
     tmdbSearchType: mediaType
   };
 }
 
 async function tryMatchTmdbForBangumi_bg(item) {
 
-  const year = extractYear_bg(item.releaseDate || "");
+  const year = item.year || extractYear_bg(item.releaseDate || "");
+  const month = item.month || extractMonth_bg(item.releaseDate || "");
   const tmdbType = item.tmdbSearchType || CONSTANTS_bg.MEDIA_TYPES.TV;
 
   const cacheKey =
-    `${normalizeTmdbQuery_bg(item.originalTitle)}_${normalizeTmdbQuery_bg(item.chineseTitle)}_${year}_${tmdbType}`;
+    `${normalizeTmdbQuery_bg(item.originalTitle)}_${normalizeTmdbQuery_bg(item.chineseTitle)}_${year}_${month || ""}_${tmdbType}`;
 
   if (tmdbCache_bg[cacheKey]) {
     return integrateTmdbLight_bg(item,tmdbCache_bg[cacheKey],tmdbType);
@@ -225,6 +197,7 @@ async function tryMatchTmdbForBangumi_bg(item) {
     listTitle:item.title,
     searchMediaType:tmdbType,
     year,
+    month,
     language:"zh-CN"
   });
 
@@ -235,6 +208,7 @@ async function tryMatchTmdbForBangumi_bg(item) {
       listTitle:item.title,
       searchMediaType:tmdbType,
       year,
+      month,
       language:"ja-JP"
     });
   }
@@ -252,6 +226,7 @@ async function searchTmdbLight_bg({
   listTitle="",
   searchMediaType="tv",
   year="",
+  month=null,
   language="zh-CN"
 }){
 
@@ -293,7 +268,8 @@ async function searchTmdbLight_bg({
         originalTitle,
         chineseTitle,
         listTitle,
-        year
+        year,
+        month
       });
 
       if (score > bestScore) {
@@ -313,6 +289,14 @@ async function searchTmdbLight_bg({
 }
 
 function calculateTmdbMatchScoreLight_bg(result,meta){
+
+  // 先严格校验月份
+  const tmdbDate = result.release_date || result.first_air_date || "";
+  const tmdbMonth = extractMonth_bg(tmdbDate);
+
+  if (meta.month && tmdbMonth && meta.month !== tmdbMonth) {
+    return -999;
+  }
 
   let score=0;
 
@@ -430,6 +414,16 @@ function normalizeTitleRule_bg(title, originalTitle, infoText) {
 function extractYear_bg(text){
   const m = String(text || "").match(/(19|20)\d{2}/);
   return m ? m[0] : "";
+}
+
+function extractMonth_bg(text){
+  const m = String(text || "").match(/(19|20)\d{2}[-\/\.](\d{1,2})/);
+  if (m) return parseInt(m[2],10);
+
+  const m2 = String(text || "").match(/(\d{1,2})月/);
+  if (m2) return parseInt(m2[1],10);
+
+  return null;
 }
 
 function normalizeTmdbQuery_bg(str){
