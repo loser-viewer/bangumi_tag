@@ -326,20 +326,32 @@ async function setCache_bg(key,value,ttl){
 // 工具函数
 // ==========================
 
-function calculateTmdbMatchScoreLight_bg(result,meta){
+function calculateTmdbMatchScoreLight_bg(result, meta) {
 
-  let score=0;
+  let score = 0;
 
   const resultTitle =
     normalizeTmdbQuery_bg(result.title || result.name || "");
 
-  const query =
-    normalizeTmdbQuery_bg(meta.originalTitle || "");
+  const resultOriginal =
+    normalizeTmdbQuery_bg(
+      result.original_title || result.original_name || ""
+    );
 
-  if (resultTitle === query) score += 70;
+  const q1 = normalizeTmdbQuery_bg(meta.originalTitle || "");
+  const q2 = normalizeTmdbQuery_bg(meta.chineseTitle || "");
+  const q3 = normalizeTmdbQuery_bg(meta.listTitle || "");
 
-  if (resultTitle.includes(query)) score += 40;
+  // 完全匹配
+  if (q1 && (resultTitle === q1 || resultOriginal === q1)) score += 80;
+  if (q2 && (resultTitle === q2 || resultOriginal === q2)) score += 70;
 
+  // 包含匹配
+  if (q1 && (resultTitle.includes(q1) || resultOriginal.includes(q1))) score += 45;
+  if (q2 && (resultTitle.includes(q2) || resultOriginal.includes(q2))) score += 35;
+  if (q3 && (resultTitle.includes(q3) || resultOriginal.includes(q3))) score += 25;
+
+  // 年份匹配
   const resultYear = extractYear_bg(
     result.release_date || result.first_air_date || ""
   );
@@ -348,16 +360,22 @@ function calculateTmdbMatchScoreLight_bg(result,meta){
 
   if (queryYear && resultYear) {
 
-    const diff =
-      Math.abs(parseInt(queryYear) - parseInt(resultYear));
+    const diff = Math.abs(parseInt(queryYear) - parseInt(resultYear));
 
-    if (diff === 0) score += 20;
-    else if (diff === 1) score += 10;
+    if (diff === 0) score += 25;
+    else if (diff === 1) score += 15;
+    else if (diff === 2) score += 5;
+    else score -= 10;
   }
 
+  // 动画类型加分
   if (result.genre_ids && result.genre_ids.includes(16)) {
-    score += 6;
+    score += 10;
   }
+
+  // 人气权重
+  if (result.vote_count > 100) score += 8;
+  else if (result.vote_count > 20) score += 4;
 
   return score;
 }
