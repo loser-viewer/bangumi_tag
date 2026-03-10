@@ -172,10 +172,35 @@ async function fetchBangumiChineseAlias_bg(item) {
       return item;
     }
 
-    let chineseAlias =
-      html.match(/<li>\s*<span class="tip">中文名:\s*<\/span>\s*([\s\S]*?)<\/li>/)?.[1] ||
-      html.match(/<span class="tip">中文名:\s*<\/span>\s*([\s\S]*?)<\/li>/)?.[1] ||
-      "";
+    let chineseAlias = "";
+
+// 1 优先抓 中文名
+chineseAlias =
+  html.match(/<span class="tip">中文名:\s*<\/span>\s*([\s\S]*?)<\/li>/)?.[1] || "";
+
+chineseAlias = stripTags_bg(chineseAlias).trim();
+
+// 2 如果没有中文名，从别名里找中文
+if (!containsChinese_bg(chineseAlias)) {
+
+  const aliasBlock =
+    html.match(/<li class="sub_container">([\s\S]*?)<\/ul>/)?.[1] || "";
+
+  const aliasList =
+    aliasBlock.match(/<li class="sub">([\s\S]*?)<\/li>/g) || [];
+
+  for (const a of aliasList) {
+
+    const name = stripTags_bg(a).trim();
+
+    if (containsChinese_bg(name)) {
+      chineseAlias = name;
+      break;
+    }
+
+  }
+
+}
 
     chineseAlias = stripTags_bg(chineseAlias).trim();
 
