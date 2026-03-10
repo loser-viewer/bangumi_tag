@@ -123,7 +123,8 @@ function parseBangumiListItem_bg(html) {
 
   const cover =
     html.match(/<img[^>]+src="([^"]+)"/)?.[1] || "";
-
+  const score =
+  html.match(/<span[^>]*class="fade"[^>]*>([\d.]+)<\/span>/)?.[1] || "";
   const releaseDate = parseDate_bg(info);
   const year = extractYear_bg(releaseDate || info);
 
@@ -135,6 +136,7 @@ function parseBangumiListItem_bg(html) {
     coverUrl: normalizeUrl_bg(cover),
     year,
     releaseDate,
+    bgmRating: score,
     tmdbSearchType: "tv"
   };
 }
