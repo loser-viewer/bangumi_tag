@@ -215,7 +215,7 @@ async function fetchTmdbDataForBangumi_bg(item) {
         continue;
       }
 
-      const params = { query, language:"zh-CN" };
+      const params = { query, language:"zh-CN",include_adult: false };
 
       if(item.year){
 
