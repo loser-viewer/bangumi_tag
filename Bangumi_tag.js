@@ -1,15 +1,11 @@
 // ============= UserScript =============
-// @name         Bangumi 标签动画
-// @version      1.2.0
-// @description  Bangumi 标签浏览 + TMDB匹配（影视榜单算法完整版）
-// ============= UserScript =============
 
 WidgetMetadata = {
   id: "forward.bangumi.tag.only",
   title: "Bangumi 动画标签",
-  description: "Bangumi 标签浏览（影视榜单算法）",
+  description: "Bangumi 标签浏览 + TMDB匹配（优化版）",
   author: "extract",
-  version: "1.2.0",
+  version: "1.3.0",
   requiredVersion: "0.0.1",
   modules: [
     {
@@ -39,23 +35,16 @@ const WidgetConfig_bg = {
   BGM_BASE_URL: "https://bgm.tv",
   BGM_TAG_URL: "https://bgm.tv/anime/tag",
   TMDB_IMAGE_BASE: "https://image.tmdb.org/t/p/w500",
-  MIN_MATCH_SCORE: 20,
-  FETCH_BATCH_SIZE: 6
-};
-
-const CONSTANTS_bg = {
-  MEDIA_TYPES: {
-    TV: "tv",
-    MOVIE: "movie"
-  }
+  FETCH_BATCH_SIZE: 8
 };
 
 const tmdbCache_bg = {};
+const tmdbSearchCache_bg = {};
 
 
-// =============================
+// ==============================
 // 入口
-// =============================
+// ==============================
 async function fetchBangumiTagPage_bg(params = {}) {
 
   const tag = (params.tag_keyword || "").trim();
@@ -71,9 +60,9 @@ async function fetchBangumiTagPage_bg(params = {}) {
 }
 
 
-// =============================
+// ==============================
 // 抓 Bangumi 页面
-// =============================
+// ==============================
 async function processBangumiTagPage_bg(url) {
 
   const response = await Widget.http.get(url);
@@ -84,35 +73,32 @@ async function processBangumiTagPage_bg(url) {
   const listBlock =
     html.match(/<ul[^>]*id="browserItemList"[^>]*>[\s\S]*?<\/ul>/)?.[0] || "";
 
-  if (!listBlock) return [];
-
   const itemBlocks =
     listBlock.match(/<li[^>]*class="[^"]*item[^"]*"[^>]*>[\s\S]*?<\/li>/g) || [];
 
-  const bangumiItems = itemBlocks
-    .map(parseBangumiListItem_bg)
-    .filter(Boolean);
+  const bangumiItems =
+    itemBlocks.map(parseBangumiListItem_bg).filter(Boolean);
 
-  const finalItems = [];
+  const results = [];
 
   for (let i = 0; i < bangumiItems.length; i += WidgetConfig_bg.FETCH_BATCH_SIZE) {
 
     const batch = bangumiItems.slice(i, i + WidgetConfig_bg.FETCH_BATCH_SIZE);
 
-    const results = await Promise.all(
+    const batchResults = await Promise.all(
       batch.map(matchBangumiToTmdb_bg)
     );
 
-    finalItems.push(...results.filter(Boolean));
+    results.push(...batchResults.filter(Boolean));
   }
 
-  return finalItems;
+  return results;
 }
 
 
-// =============================
-// 解析 Bangumi 条目
-// =============================
+// ==============================
+// 解析 Bangumi
+// ==============================
 function parseBangumiListItem_bg(html) {
 
   const id = html.match(/\/subject\/(\d+)/)?.[1];
@@ -125,21 +111,21 @@ function parseBangumiListItem_bg(html) {
 
   title = stripTags_bg(title).trim();
 
-  let originalTitle =
-    html.match(/<small[^>]*>([\s\S]*?)<\/small>/)?.[1] || "";
-
-  originalTitle = stripTags_bg(originalTitle).trim();
+  const originalTitle =
+    stripTags_bg(
+      html.match(/<small[^>]*>([\s\S]*?)<\/small>/)?.[1] || ""
+    ).trim();
 
   const info =
     stripTags_bg(
       html.match(/<p[^>]*class="info"[^>]*>([\s\S]*?)<\/p>/)?.[1] || ""
     ).trim();
 
-  const releaseDate = parseDate_bg(info);
-  const year = extractYear_bg(releaseDate || info);
-
   const cover =
     html.match(/<img[^>]+src="([^"]+)"/)?.[1] || "";
+
+  const releaseDate = parseDate_bg(info);
+  const year = extractYear_bg(releaseDate || info);
 
   return {
     id,
@@ -149,35 +135,31 @@ function parseBangumiListItem_bg(html) {
     coverUrl: normalizeUrl_bg(cover),
     year,
     releaseDate,
-    tmdbSearchType: detectItemTypeFromContent_bg({ title, info })
+    tmdbSearchType: "tv"
   };
 }
 
 
-// =============================
+// ==============================
 // 日期解析
-// =============================
-function parseDate_bg(dateStr) {
+// ==============================
+function parseDate_bg(str) {
 
-  if (!dateStr) return "";
+  if (!str) return "";
 
-  dateStr = dateStr.trim();
   let m;
 
-  m = dateStr.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+  m = str.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
   if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
 
-  m = dateStr.match(/(\d{4})年(\d{1,2})月/);
+  m = str.match(/(\d{4})年(\d{1,2})月/);
   if (m) return `${m[1]}-${pad(m[2])}-01`;
 
-  m = dateStr.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  m = str.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
 
-  m = dateStr.match(/(\d{4})[-/](\d{1,2})/);
+  m = str.match(/(\d{4})-(\d{1,2})/);
   if (m) return `${m[1]}-${pad(m[2])}-01`;
-
-  m = dateStr.match(/(19|20)\d{2}/);
-  if (m) return `${m[0]}-01-01`;
 
   return "";
 }
@@ -187,139 +169,144 @@ function pad(n){
 }
 
 
-// =============================
-// Bangumi → TMDB
-// =============================
+// ==============================
+// TMDB 匹配
+// ==============================
 async function matchBangumiToTmdb_bg(item) {
 
   const cacheKey = `${item.title}_${item.year}`;
 
-  if (tmdbCache_bg[cacheKey]) {
+  if (tmdbCache_bg[cacheKey])
     return integrateTmdbItem_bg(item, tmdbCache_bg[cacheKey]);
-  }
 
-  const candidates =
-    await fetchTmdbDataForBangumi_bg(item, item.tmdbSearchType);
+  const candidates = await fetchTmdbDataForBangumi_bg(item);
 
   if (!candidates.length) return null;
 
   const best =
-    selectMatches_bg(candidates, item.title, item.year,
-      { preferredType: item.tmdbSearchType });
+    selectMatches_bg(candidates,item.title,item.year);
 
   if (!best) return null;
 
   tmdbCache_bg[cacheKey] = best;
 
-  return integrateTmdbItem_bg(item, best);
+  return integrateTmdbItem_bg(item,best);
 }
 
 
-// =============================
-// 查询生成
-// =============================
-function generateTmdbSearchQueries_bg(originalTitle, listTitle) {
-
-  const queries = new Set();
-
-  function clean(str) {
-    return String(str || "")
-      .replace(/\(.*?\)/g,"")
-      .replace(/第.+[季期]/g,"")
-      .replace(/剧场版/g,"")
-      .trim();
-  }
-
-  queries.add(clean(originalTitle));
-  queries.add(clean(listTitle));
-
-  return [...queries].slice(0,4);
-}
-
-
-// =============================
-// TMDB 搜索
-// =============================
+// ==============================
+// TMDB 搜索（缓存 + 并发）
+// ==============================
 async function fetchTmdbDataForBangumi_bg(item) {
 
   const queries =
-    generateTmdbSearchQueries_bg(item.originalTitle,item.title);
+    generateQueries_bg(item.originalTitle,item.title);
 
-  const results = [];
-  const seen = new Set();
+  const tasks = [];
 
-  for (const query of queries) {
+  for(const query of queries){
 
-    for (const type of ["tv","movie"]) {
+    for(const type of ["tv","movie"]){
 
-      try {
+      const cacheKey = `${type}_${query}_${item.year}`;
 
-        const params = { query, language:"zh-CN" };
+      if(tmdbSearchCache_bg[cacheKey]){
+        tasks.push(Promise.resolve(tmdbSearchCache_bg[cacheKey]));
+        continue;
+      }
 
-        if (item.year) {
+      const params = { query, language:"zh-CN" };
 
-          if (type==="tv")
-            params.first_air_date_year = parseInt(item.year);
-          else
-            params.primary_release_year = parseInt(item.year);
+      if(item.year){
 
-        }
+        if(type==="tv")
+          params.first_air_date_year = parseInt(item.year);
+        else
+          params.primary_release_year = parseInt(item.year);
 
-        const res =
-          await Widget.tmdb.get(`/search/${type}`,{params});
+      }
 
-        const list = res?.results || [];
+      const task =
+        Widget.tmdb.get(`/search/${type}`,{params})
+        .then(res=>{
+          const r = res?.results || [];
+          tmdbSearchCache_bg[cacheKey] = r;
+          return r;
+        });
 
-        for (const r of list) {
-
-          const key = `${type}_${r.id}`;
-
-          if (!seen.has(key)) {
-
-            seen.add(key);
-            results.push({...r,media_type:type});
-
-          }
-
-        }
-
-      } catch(e){}
+      tasks.push(task);
 
     }
 
   }
 
-  return results;
+  const responses = await Promise.all(tasks);
+
+  const list = [];
+  const seen = new Set();
+
+  for(const arr of responses){
+
+    for(const r of arr){
+
+      const key = `${r.id}_${r.media_type || ""}`;
+
+      if(!seen.has(key)){
+        seen.add(key);
+        list.push(r);
+      }
+
+    }
+
+  }
+
+  return list;
 }
 
 
-// =============================
-// 影视榜单评分
-// =============================
-function calculateMatchScore_bg(result,title,year,type){
+// ==============================
+// 查询生成
+// ==============================
+function generateQueries_bg(orig,title){
+
+  const set = new Set();
+
+  function clean(s){
+    return String(s||"")
+      .replace(/\(.*?\)/g,"")
+      .replace(/第.+季/g,"")
+      .replace(/剧场版/g,"")
+      .trim();
+  }
+
+  set.add(clean(orig));
+  set.add(clean(title));
+
+  return [...set].filter(Boolean).slice(0,3);
+}
+
+
+// ==============================
+// 匹配评分
+// ==============================
+function calculateMatchScore_bg(r,title,year){
 
   let score = 0;
 
   const tmdbTitle =
-    normalizeCompareText_bg(result.title || result.name);
-
-  const tmdbOriginal =
-    normalizeCompareText_bg(result.original_title || result.original_name);
+    normalizeCompareText_bg(r.title || r.name);
 
   const bgmTitle =
     normalizeCompareText_bg(title);
 
-  if (tmdbTitle===bgmTitle || tmdbOriginal===bgmTitle)
-    score+=100;
-
-  else if (tmdbTitle.includes(bgmTitle))
-    score+=60;
+  if(tmdbTitle===bgmTitle) score+=100;
+  else if(tmdbTitle.includes(bgmTitle)) score+=60;
 
   const tmdbYear =
-    (result.release_date || result.first_air_date || "")
+    (r.release_date || r.first_air_date || "")
       .substring(0,4);
 
-  if (year && tmdbYear){
+  if(year && tmdbYear){
 
     const diff =
       Math.abs(parseInt(year)-parseInt(tmdbYear));
@@ -330,31 +317,20 @@ function calculateMatchScore_bg(result,title,year,type){
 
   }
 
-  if(type){
+  if(r.genre_ids?.includes(16)) score+=50;
+  else score-=200;
 
-    if(result.media_type===type)
-      score+=100;
-    else
-      score-=100;
-
-  }
-
-  if(result.genre_ids?.includes(16))
-    score+=50;
-  else
-    score-=200;
-
-  score += Math.log10((result.popularity||0)+1);
-  score += Math.log10((result.vote_count||0)+1);
+  score += Math.log10((r.popularity||0)+1);
+  score += Math.log10((r.vote_count||0)+1);
 
   return score;
 }
 
 
-// =============================
+// ==============================
 // 选最佳
-// =============================
-function selectMatches_bg(results,title,year,opt={}){
+// ==============================
+function selectMatches_bg(results,title,year){
 
   let best=null;
   let bestScore=-Infinity;
@@ -362,9 +338,7 @@ function selectMatches_bg(results,title,year,opt={}){
   for(const r of results){
 
     const s =
-      calculateMatchScore_bg(
-        r,title,year,opt.preferredType
-      );
+      calculateMatchScore_bg(r,title,year);
 
     if(s>bestScore){
       bestScore=s;
@@ -373,89 +347,54 @@ function selectMatches_bg(results,title,year,opt={}){
 
   }
 
-  if(bestScore < WidgetConfig_bg.MIN_MATCH_SCORE)
-    return null;
-
   return best;
 }
 
 
-// =============================
+// ==============================
 // 输出
-// =============================
+// ==============================
 function integrateTmdbItem_bg(baseItem,tmdb){
 
   return {
-
     id:String(tmdb.id),
     type:"tmdb",
-
     title:tmdb.title || tmdb.name || baseItem.title,
-
     description:tmdb.overview || baseItem.description,
-
     releaseDate:
       tmdb.release_date ||
       tmdb.first_air_date ||
       baseItem.releaseDate ||
-      (baseItem.year ? `${baseItem.year}-01-01` : ""),
-
+      "",
     coverUrl:
       tmdb.poster_path
-      ? `${WidgetConfig_bg.TMDB_IMAGE_BASE}${tmdb.poster_path}`
-      : baseItem.coverUrl,
-
+        ? `${WidgetConfig_bg.TMDB_IMAGE_BASE}${tmdb.poster_path}`
+        : baseItem.coverUrl,
     rating:
       tmdb.vote_average
         ? tmdb.vote_average.toFixed(1)
         : "",
-
-    mediaType:tmdb.media_type
-
+    mediaType:tmdb.media_type || "tv"
   };
-
 }
 
 
-// =============================
-// 类型判断
-// =============================
-function detectItemTypeFromContent_bg(item){
-
-  const text =
-    (item.title || "") +
-    (item.info || "");
-
-  if(/剧场版|电影|movie/i.test(text))
-    return CONSTANTS_bg.MEDIA_TYPES.MOVIE;
-
-  return CONSTANTS_bg.MEDIA_TYPES.TV;
-
-}
-
-
-// =============================
+// ==============================
 // 工具
-// =============================
+// ==============================
 function normalizeCompareText_bg(str){
-
-  return String(str || "")
+  return String(str||"")
     .toLowerCase()
     .replace(/[^\u4e00-\u9fa5a-z0-9]/g,"");
-
 }
 
 function extractYear_bg(str){
-
-  const m = str.match(/(19|20)\d{2}/);
+  const m = String(str||"").match(/(19|20)\d{2}/);
   return m ? m[0] : "";
-
 }
 
 function stripTags_bg(str){
-
-  return String(str || "").replace(/<[^>]*>/g,"");
-
+  return String(str||"").replace(/<[^>]*>/g,"");
 }
 
 function normalizeUrl_bg(url){
