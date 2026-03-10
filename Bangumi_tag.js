@@ -3,18 +3,10 @@
 const CONSTANTS_bg = {
   MEDIA_TYPES: {
     TV: "tv",
-    MOVIE: "movie",
-    ANIME: "anime"
+    MOVIE: "movie"
   },
   SHORT_FILM_KEYWORDS: [
-    "剧场版",
-    "电影",
-    "movie",
-    "总集篇",
-    "完结篇",
-    "短片",
-    "OVA",
-    "OAD"
+    "剧场版","电影","movie","总集篇","完结篇","短片","OVA","OAD"
   ]
 };
 
@@ -22,23 +14,22 @@ const WidgetConfig_bg = {
   BGM_BASE_URL: "https://bgm.tv",
   BGM_TAG_URL: "https://bgm.tv/anime/tag",
   TMDB_IMAGE_BASE: "https://image.tmdb.org/t/p/w500",
-  TMDB_SEARCH_MIN_SCORE: 60,
+  TMDB_SEARCH_MIN_SCORE: 35,
   MAX_MATCH_ITEMS: 12
 };
 
 const tmdbCache_bg = {};
 
 WidgetMetadata = {
-  id: "forward.bangumi.simple.tag.tmdb",
+  id: "forward.bangumi.tag.tmdb",
   title: "Bangumi 动画标签",
-  description: "Bangumi 标签浏览 + TMDB 匹配（优化版）",
+  description: "Bangumi 标签浏览 + TMDB 匹配",
   author: "ChatGPT",
-  version: "2.0.0",
+  version: "2.1.0",
   requiredVersion: "0.0.1",
   modules: [
     {
       title: "Bangumi 动画标签",
-      description: "输入标签后返回动画列表",
       requiresWebView: false,
       functionName: "fetchBangumiTagPage_bg",
       cacheDuration: 3600,
@@ -53,8 +44,8 @@ WidgetMetadata = {
           name: "sort",
           title: "排序",
           type: "enumeration",
-          value: "rank",
           multiple: false,
+          value: "rank",
           enumOptions: [
             { title: "综合排名", value: "rank" },
             { title: "标注数", value: "collects" },
@@ -62,11 +53,7 @@ WidgetMetadata = {
             { title: "名称", value: "title" }
           ]
         },
-        {
-          name: "page",
-          title: "页码",
-          type: "page"
-        }
+        { name: "page", title: "页码", type: "page" }
       ]
     }
   ]
@@ -75,63 +62,61 @@ WidgetMetadata = {
 // ==========================
 // 入口
 // ==========================
+
 async function fetchBangumiTagPage_bg(params = {}) {
+
   const tag = (params.tag_keyword || "").trim();
   const sort = params.sort || "rank";
-  const page = parseInt(params.page, 10) || 1;
+  const page = parseInt(params.page) || 1;
 
   if (!tag) return [];
 
   const url =
-    `${WidgetConfig_bg.BGM_TAG_URL}/${encodeURIComponent(tag)}?sort=${encodeURIComponent(sort)}&page=${page}`;
+    `${WidgetConfig_bg.BGM_TAG_URL}/${encodeURIComponent(tag)}?sort=${sort}&page=${page}`;
 
   return await processBangumiTagPage_bg(url);
 }
 
 // ==========================
-// Bangumi 页面解析
+// Bangumi 抓取
 // ==========================
+
 async function processBangumiTagPage_bg(url) {
 
-  const res = await Widget.http.get(url, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)"
-    }
+  const res = await Widget.http.get(url,{
+    headers:{ "User-Agent":"Mozilla/5.0"}
   });
 
-  const html = typeof res?.data === "string" ? res.data : "";
-  if (!html) return [];
+  const html = res?.data || "";
 
   const listBlock =
-    html.match(/<ul[^>]*id="browserItemList"[^>]*>[\s\S]*?<\/ul>/)?.[0] ||
-    html.match(/<ul[^>]*class="[^"]*browserFull[^"]*"[^>]*>[\s\S]*?<\/ul>/)?.[0] ||
-    "";
+    html.match(/<ul[^>]*id="browserItemList"[^>]*>[\s\S]*?<\/ul>/)?.[0] || "";
 
   if (!listBlock) return [];
 
   const items =
     listBlock.match(/<li[^>]*class="[^"]*\bitem\b[^"]*"[^>]*>[\s\S]*?<\/li>/g) || [];
 
-  const bgmItems = items
+  const parsed = items
     .map(parseBangumiItem_bg)
     .filter(Boolean)
     .slice(0, WidgetConfig_bg.MAX_MATCH_ITEMS);
 
   const results = await Promise.all(
-    bgmItems.map(item => tryMatchTmdbForBangumi_bg(item))
+    parsed.map(i => tryMatchTmdb_bg(i))
   );
 
   return results.filter(Boolean);
 }
 
 // ==========================
-// 解析 Bangumi 条目
+// 解析 Bangumi
 // ==========================
-function parseBangumiItem_bg(item) {
+
+function parseBangumiItem_bg(item){
 
   const id = item.match(/\/subject\/(\d+)/)?.[1];
-  if (!id) return null;
+  if(!id) return null;
 
   let title =
     item.match(/title="([^"]+)"/)?.[1] ||
@@ -141,96 +126,88 @@ function parseBangumiItem_bg(item) {
   title = stripTags_bg(title).trim();
 
   let cover = item.match(/<img[^>]+src="([^"]+)"/)?.[1] || "";
-
   cover = normalizeUrl_bg(cover);
 
-  const infoRaw =
-    item.match(/<p[^>]*class="info"[^>]*>([\s\S]*?)<\/p>/)?.[1] || "";
-
-  const info = stripTags_bg(infoRaw);
+  const info =
+    stripTags_bg(item.match(/<p[^>]*class="info"[^>]*>([\s\S]*?)<\/p>/)?.[1] || "");
 
   const smallTitle =
-    stripTags_bg(
-      item.match(/<small[^>]*>([\s\S]*?)<\/small>/)?.[1] || ""
-    ).trim();
+    stripTags_bg(item.match(/<small[^>]*>([\s\S]*?)<\/small>/)?.[1] || "");
 
   const year = extractYear_bg(info);
 
-  const type = detectAnimeMediaType_bg(title, smallTitle, info);
+  const mediaType = detectType_bg(title,smallTitle,info);
 
   return {
-    bgm_id: id,
+    bgm_id:id,
     title,
     originalTitle: smallTitle || title,
     chineseTitle: title,
-    coverUrl: cover,
-    releaseDate: year ? `${year}-01-01` : "",
-    tmdbSearchType: type
+    coverUrl:cover,
+    releaseDate:year ? `${year}-01-01` : "",
+    tmdbSearchType:mediaType
   };
 }
 
 // ==========================
 // TMDB 匹配
 // ==========================
-async function tryMatchTmdbForBangumi_bg(item) {
 
-  const cacheKey = `${item.originalTitle}_${item.tmdbSearchType}`;
+async function tryMatchTmdb_bg(item){
 
-  if (tmdbCache_bg[cacheKey]) {
-    return integrateTmdb_bg(item, tmdbCache_bg[cacheKey]);
+  const cacheKey = item.originalTitle+"_"+item.tmdbSearchType;
+
+  if(tmdbCache_bg[cacheKey]){
+    return integrateTmdb_bg(item,tmdbCache_bg[cacheKey]);
   }
 
-  const tmdbRes = await searchTmdb_bg(item);
+  const tmdb = await searchTmdb_bg(item);
 
-  if (!tmdbRes) return null;
+  if(!tmdb) return null;
 
-  tmdbCache_bg[cacheKey] = tmdbRes;
+  tmdbCache_bg[cacheKey]=tmdb;
 
-  return integrateTmdb_bg(item, tmdbRes);
+  return integrateTmdb_bg(item,tmdb);
 }
 
 // ==========================
 // TMDB 搜索
 // ==========================
-async function searchTmdb_bg(item) {
+
+async function searchTmdb_bg(item){
 
   const queries = uniqueNonEmpty_bg([
     normalizeQuery_bg(item.originalTitle),
-    normalizeQuery_bg(item.chineseTitle)
+    normalizeQuery_bg(item.title)
   ]);
 
-  let best = null;
-  let bestScore = -999;
+  let best=null;
+  let bestScore=-999;
 
-  for (const query of queries.slice(0, 2)) {
+  for(const query of queries){
 
-    const params = {
-      query,
-      language: "zh-CN",
-      page: 1
-    };
+    const params={query,language:"zh-CN",page:1};
 
     const data = await Widget.tmdb.get(
-      `/search/${item.tmdbSearchType}`,
-      { params }
+      `/search/${item.tmdbSearchType}`,{params}
     );
 
-    const results = data?.results || [];
+    const results=data?.results||[];
 
-    for (const r of results.slice(0, 6)) {
+    for(const r of results.slice(0,6)){
 
-      const score = calculateScore_bg(r, item);
+      const score = calculateScore_bg(r,item);
 
-      if (score > bestScore) {
-        bestScore = score;
-        best = r;
+      if(score>bestScore){
+        bestScore=score;
+        best=r;
       }
     }
 
-    if (bestScore > 85) break;
+    if(bestScore>85) break;
   }
 
-  if (bestScore < WidgetConfig_bg.TMDB_SEARCH_MIN_SCORE) {
+  if(bestScore < WidgetConfig_bg.TMDB_SEARCH_MIN_SCORE){
     return null;
   }
 
@@ -240,100 +217,94 @@ async function searchTmdb_bg(item) {
 // ==========================
 // 打分
 // ==========================
-function calculateScore_bg(result, item) {
 
-  let score = 0;
+function calculateScore_bg(r,item){
 
-  const title =
-    (result.title || result.name || "").toLowerCase();
+  let score=0;
 
-  const query =
-    (item.originalTitle || "").toLowerCase();
+  const title=normalizeQuery_bg(r.title||r.name);
+  const query=normalizeQuery_bg(item.originalTitle);
 
-  if (title === query) score += 60;
+  if(title===query) score+=80;
 
-  if (title.includes(query)) score += 30;
+  if(title.includes(query)) score+=40;
 
-  const year1 = extractYear_bg(
-    result.release_date || result.first_air_date
-  );
+  const y1=extractYear_bg(r.release_date||r.first_air_date);
+  const y2=extractYear_bg(item.releaseDate);
 
-  const year2 = extractYear_bg(item.releaseDate);
-
-  if (year1 && year2) {
-    const diff = Math.abs(year1 - year2);
-    if (diff === 0) score += 20;
-    else if (diff === 1) score += 10;
+  if(y1 && y2){
+    const diff=Math.abs(y1-y2);
+    if(diff===0) score+=20;
+    else if(diff===1) score+=10;
   }
 
-  if (result.genre_ids?.includes(16)) score += 5;
+  if(r.genre_ids?.includes(16)) score+=5;
 
-  if (result.vote_count > 50) score += 5;
+  if(r.vote_count>50) score+=5;
 
   return score;
 }
 
 // ==========================
-// 整合 TMDB 数据
+// 整合 TMDB
 // ==========================
-function integrateTmdb_bg(item, tmdb) {
+
+function integrateTmdb_bg(item,tmdb){
 
   return {
-    id: String(tmdb.id),
-    type: "tmdb",
-    title: tmdb.title || tmdb.name,
-    mediaType: item.tmdbSearchType,
-    coverUrl: tmdb.poster_path
-      ? `${WidgetConfig_bg.TMDB_IMAGE_BASE}${tmdb.poster_path}`
+    id:String(tmdb.id),
+    type:"tmdb",
+    title:tmdb.title||tmdb.name,
+    mediaType:item.tmdbSearchType,
+    coverUrl:tmdb.poster_path
+      ? WidgetConfig_bg.TMDB_IMAGE_BASE+tmdb.poster_path
       : item.coverUrl,
-    description: tmdb.overview || "",
-    releaseDate:
-      tmdb.release_date || tmdb.first_air_date || "",
-    rating: tmdb.vote_average?.toFixed(1) || "",
-    tmdb_id: String(tmdb.id),
-    bgm_id: item.bgm_id
+    description:tmdb.overview||"",
+    releaseDate:tmdb.release_date||tmdb.first_air_date||"",
+    rating:tmdb.vote_average?.toFixed(1)||"",
+    tmdb_id:String(tmdb.id),
+    bgm_id:item.bgm_id
   };
 }
 
 // ==========================
 // 工具函数
 // ==========================
-function detectAnimeMediaType_bg(title, originalTitle, info) {
 
-  const text =
-    `${title} ${originalTitle} ${info}`.toLowerCase();
+function detectType_bg(title,original,info){
 
-  return CONSTANTS_bg.SHORT_FILM_KEYWORDS.some(k =>
-    text.includes(k.toLowerCase())
-  )
+  const text=(title+" "+original+" "+info).toLowerCase();
+
+  return CONSTANTS_bg.SHORT_FILM_KEYWORDS.some(k=>text.includes(k.toLowerCase()))
     ? CONSTANTS_bg.MEDIA_TYPES.MOVIE
     : CONSTANTS_bg.MEDIA_TYPES.TV;
 }
 
-function extractYear_bg(text) {
-  const m = String(text || "").match(/(19|20)\d{2}/);
+function extractYear_bg(t){
+  const m=String(t||"").match(/(19|20)\d{2}/);
   return m ? parseInt(m[0]) : "";
 }
 
-function normalizeQuery_bg(str) {
-  return String(str || "")
-    .replace(/<[^>]*>/g, "")
-    .replace(/[【】()（）]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+function normalizeQuery_bg(str){
+  return String(str||"")
+    .replace(/<[^>]*>/g,"")
+    .replace(/[【】()（）]/g,"")
+    .replace(/\s+/g," ")
+    .trim()
+    .toLowerCase();
 }
 
-function uniqueNonEmpty_bg(arr) {
+function uniqueNonEmpty_bg(arr){
   return [...new Set(arr.filter(Boolean))];
 }
 
-function stripTags_bg(str) {
-  return (str || "").replace(/<[^>]*>/g, "");
+function stripTags_bg(str){
+  return (str||"").replace(/<[^>]*>/g,"");
 }
 
-function normalizeUrl_bg(url) {
-  if (!url) return "";
-  if (url.startsWith("//")) return "https:" + url;
-  if (url.startsWith("/")) return WidgetConfig_bg.BGM_BASE_URL + url;
+function normalizeUrl_bg(url){
+  if(!url) return "";
+  if(url.startsWith("//")) return "https:"+url;
+  if(url.startsWith("/")) return WidgetConfig_bg.BGM_BASE_URL+url;
   return url;
 }
