@@ -5,7 +5,7 @@ WidgetMetadata = {
   title: "Bangumi 动画标签",
   description: "Bangumi 标签浏览 + TMDB匹配（优化版）",
   author: "extract",
-  version: "1.4.0",
+  version: "1.4.5",
   requiredVersion: "0.0.1",
   modules: [
     {
@@ -124,7 +124,9 @@ function parseBangumiListItem_bg(html) {
   const cover =
     html.match(/<img[^>]+src="([^"]+)"/)?.[1] || "";
   const score =
-  html.match(/<span[^>]*class="fade"[^>]*>([\d.]+)<\/span>/)?.[1] || "";
+  html.match(/<span class="fade">([\d.]+)<\/span>/)?.[1] ||
+  html.match(/<span[^>]*class="[^"]*fade[^"]*"[^>]*>([\d.]+)<\/span>/)?.[1] ||
+  "";
   const releaseDate = parseDate_bg(info);
   const year = extractYear_bg(releaseDate || info);
 
@@ -364,21 +366,24 @@ function integrateTmdbItem_bg(baseItem,tmdb){
   return {
     id: String(tmdb.id),
     type: "tmdb",
+
     title: tmdb.title || tmdb.name || baseItem.title,
+
     description:
-  (baseItem.bgmRating ? `Bangumi评分 ${baseItem.bgmRating}\n` : "") +
-  (tmdb.overview || baseItem.description),
+      (baseItem.bgmRating ? `⭐Bangumi ${baseItem.bgmRating} | ` : "") +
+      (tmdb.overview || baseItem.description),
+
     releaseDate:
       tmdb.release_date ||
       tmdb.first_air_date ||
       baseItem.releaseDate ||
       "",
+
     coverUrl:
       posterPath
         ? `${WidgetConfig_bg.TMDB_IMAGE_BASE}${posterPath}`
         : baseItem.coverUrl,
 
-    // 这两个字段决定三列竖海报显示
     posterPath: posterPath,
     backdropPath: backdropPath,
 
@@ -386,10 +391,11 @@ function integrateTmdbItem_bg(baseItem,tmdb){
       tmdb.vote_average
         ? tmdb.vote_average.toFixed(1)
         : "",
+
     mediaType: tmdb.media_type || "tv"
   };
-}
 
+}
 
 // ==============================
 // 工具
