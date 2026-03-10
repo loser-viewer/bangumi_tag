@@ -309,27 +309,36 @@ function calculateTmdbMatchScoreLight_bg(result,meta){
   return score;
 }
 
-function integrateTmdbLight_bg(baseItem,tmdbResult,tmdbType){
+function integrateTmdbLight_bg(baseItem, tmdbResult, tmdbType){
 
-  // 只改布局相关字段，不改你原本匹配逻辑
+  const posterPath = tmdbResult.poster_path || "";
+  const backdropPath = tmdbResult.backdrop_path || "";
+  const fullCoverUrl = posterPath
+    ? `${WidgetConfig_bg.TMDB_IMAGE_BASE}${posterPath}`
+    : (baseItem.coverUrl || "");
+
   return {
     id: String(tmdbResult.id),
     type: "tmdb",
     title: tmdbResult.title || tmdbResult.name || baseItem.title,
-    description: tmdbResult.overview || baseItem.description,
+    description: tmdbResult.overview || baseItem.description || "",
     releaseDate:
       tmdbResult.release_date ||
       tmdbResult.first_air_date ||
-      baseItem.releaseDate,
+      baseItem.releaseDate ||
+      "",
 
-    // 关键：给 Forward 走影视海报布局
-    posterPath: tmdbResult.poster_path || "",
-    backdropPath: tmdbResult.backdrop_path || "",
+    // 原来能正常显示的字段，必须保留
+    coverUrl: fullCoverUrl,
+
+    // 兼容影视榜单样式的字段
+    posterPath: posterPath,
+    backdropPath: backdropPath,
 
     rating:
       typeof tmdbResult.vote_average === "number"
-      ? tmdbResult.vote_average
-      : "",
+        ? Number(tmdbResult.vote_average).toFixed(1)
+        : "",
 
     mediaType: tmdbType
   };
