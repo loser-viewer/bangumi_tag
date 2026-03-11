@@ -1,10 +1,10 @@
 WidgetMetadata = {
   id: "bangumi_tag_tmdb",
   title: "Bangumi Tag",
-  description: "Bangumi 标签筛选",
+  description: "Bangumi 标签浏览 + TMDB匹配",
   author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
-  version: "1.4.2",
+  version: "1.4.3",
   requiredVersion: "0.0.1",
   detailCacheDuration: 60,
   modules: [
@@ -1517,7 +1517,7 @@ async function processBangumiPage_bg(url, categoryHint, currentPageString, ranki
         } 
     }
     if (currentPage >= 1) { 
-        const numPagesToPrefetchAhead = 2; 
+        const numPagesToPrefetchAhead = 1; 
         for (let i = 1; i <= numPagesToPrefetchAhead; i++) {
             const pageNumToPrefetch = currentPage + i;
             let nextPageUrlToPrefetch;
