@@ -4,7 +4,7 @@ WidgetMetadata = {
   description: "Bangumi 标签浏览 + TMDB匹配",
   author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
-  version: "1.4.3",
+  version: "1.4.4",
   requiredVersion: "0.0.1",
   detailCacheDuration: 60,
   modules: [
@@ -1562,6 +1562,10 @@ async function processBangumiPage_bg(url, categoryHint, currentPageString, ranki
 
 
 async function fetchBangumiTagPage_bg(params = {}) {
+    if (!params?.tag_keyword || String(params.tag_keyword).trim() === "") {
+        console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [TAG模块] tag_keyword 为空，停止执行`);
+        return [];
+    }
     const category = CONSTANTS_bg.MEDIA_TYPES.ANIME;
     const tagKeyword = params.tag_keyword || "";
     const sort = params.sort || "rank";
