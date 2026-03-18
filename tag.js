@@ -4,7 +4,7 @@ WidgetMetadata = {
   description: "Bangumi 标签浏览 + TMDB匹配",
   author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
-  version: "1.4.7",
+  version: "1.4.8",
   requiredVersion: "0.0.1",
   detailCacheDuration: 60,
   modules: [
@@ -69,23 +69,23 @@ const WidgetConfig_bg = {
   TMDB_APPEND_TO_RESPONSE: "translations,genres",
   TMDB_SEARCH_STAGE1_YEAR_STRICT_SCORE_BOOST: 12,
   TMDB_SEARCH_STAGE1_HIGH_CONFIDENCE_EXIT_SCORE: 90,
-  CACHE_TTL_MS: 25 * 60 * 1000,
-  PREFETCH_CACHE_TTL_MS: 2 * 60 * 1000,
+  CACHE_TTL_MS: 24 * 60 * 60 * 1000,
+  PREFETCH_CACHE_TTL_MS: 10 * 60 * 1000,
   MAX_PREFETCHED_PAGES: 5,
   DEBUG_LOGGING: false,
 
   BGM_BASE_URL: "https://bgm.tv",
   BGM_API_USER_AGENT: `ForwardWidget/1.2 (forward.media.allinone-bangumi_integration) (https://github.com/InchStudio/ForwardWidgets)`,
 
-  TTL_TRENDS_MS: 6 * 60 * 60 * 1000,
+  TTL_TRENDS_MS: 12 * 60 * 60 * 1000,
   TTL_RANK_MS: 24 * 60 * 60 * 1000,
-  TTL_SEASON_EARLY_MS: 12 * 60 * 60 * 1000,
+  TTL_SEASON_EARLY_MS: 24 * 60 * 60 * 1000,
   TTL_SEASON_LATE_MS: 3 * 24 * 60 * 60 * 1000,
   TTL_ARCHIVE_MS: 7 * 24 * 60 * 60 * 1000,
-  TTL_CALENDAR_API_MS: 6 * 60 * 60 * 1000,
-  TTL_CALENDAR_ITEM_ENHANCED_MS: 24 * 60 * 60 * 1000,
+  TTL_CALENDAR_API_MS: 24 * 60 * 60 * 1000,
+  TTL_CALENDAR_ITEM_ENHANCED_MS: 3 * 24 * 60 * 60 * 1000,
   TTL_BGM_DETAIL_COVER_MS: 7 * 24 * 60 * 60 * 1000,
-  TTL_TMDB_FULL_DETAIL_MS: 24 * 60 * 60 * 1000,
+  TTL_TMDB_FULL_DETAIL_MS: 7 * 24 * 60 * 60 * 1000,
 
   SEASON_EARLY_WEEKS: 6,
   MAX_TOTAL_TMDB_QUERIES_TO_PROCESS: 2,
@@ -109,7 +109,7 @@ const WidgetConfig_bg = {
   TMDB_PENALTY_NO_CHINESE_OVERVIEW_RAW: -75,
 
   BGM_USE_BGMD_INDEX: true,
-  TTL_BGMD_INDEX_MS: 24 * 60 * 60 * 1000,
+  TTL_BGMD_INDEX_MS: 7 * 24 * 60 * 60 * 1000,
   BGMD_INDEX_URL: "https://cdn.jsdelivr.net/gh/loser-viewer/bangumi_tag@main/index.json",
 
   BGM_API_BASE_URL: "https://api.bgm.tv",
@@ -117,16 +117,17 @@ const WidgetConfig_bg = {
 };
 
 const CONSTANTS_bg = {
-  SCRIPT_VERSION: "6.7.0_aio_bgmd_integration",
+  SCRIPT_VERSION: "6.7.0_aio_bgmd_integration_stable_cache",
   LOG_PREFIX_GENERAL: `[BGM_AIO_INTEGRATION v6.7.0_aio]`,
   CACHE_KEYS: {
-    TMDB_SEARCH: `tmdb_search_computed_bg_v6.7.0_aio`,
-    ITEM_DETAIL_COMPUTED: `item_detail_computed_bg_v6.7.0_aio_final`,
+    TMDB_SEARCH: `tmdb_search_computed_bg_v6.7.0_aio_stable`,
+    ITEM_DETAIL_COMPUTED: `item_detail_computed_bg_v6.7.0_aio_stable`,
     BGM_CALENDAR_API: `bgm_calendar_api_data_bg_v6.7.0_aio`,
     CALENDAR_ITEM_FINAL_DISPLAY: `calendar_item_final_display_bg_v6.7.0_aio`,
     BGM_DETAIL_COVER: `bgm_detail_cover_bg_v6.7.0_aio`,
     TMDB_FULL_DETAIL: `tmdb_full_detail_bg_v6.7.0_aio`,
     BGMD_INDEX_DATA: `bgmd_index_data_v6.7.0_aio`,
+    BGM_LIST_HTML_STABLE: `bgm_list_html_stable_v1`,
   },
   MEDIA_TYPES: {
     TV: "tv",
@@ -388,6 +389,37 @@ async function fetchWithRetry_bg(url, options, method = 'get', isTmdb = false, c
   }
 
   throw new Error(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [HTTP] 达到最大重试次数 ${url}`);
+}
+
+async function getCachedBangumiListHtml_bg(url, bangumiAccessToken = null, bangumiCookie = null) {
+  const commonHeaders = {
+    "Referer": `${WidgetConfig_bg.BGM_BASE_URL}/`,
+    "Accept-Language": "zh-CN,zh;q=0.9"
+  };
+
+  return CacheUtil_bg.cachedOrFetch(
+    CONSTANTS_bg.CACHE_KEYS.BGM_LIST_HTML_STABLE,
+    url,
+    async () => {
+      const resp = await fetchWithRetry_bg(
+        url,
+        {
+          headers: commonHeaders,
+          bangumiAccessToken: bangumiAccessToken,
+          bangumiCookieString: bangumiCookie
+        },
+        "get",
+        false,
+        WidgetConfig_bg.HTTP_MAIN_RETRIES
+      );
+
+      if (!resp?.data) {
+        throw new Error("列表页响应数据为空或无效");
+      }
+      return resp.data;
+    },
+    { ttl: WidgetConfig_bg.TTL_RANK_MS }
+  );
 }
 
 function isEarlySeason_bg(year, month, currentDate = new Date()) {
@@ -856,23 +888,13 @@ function generateTmdbSearchQueries_bg(originalTitle, chineseTitle, listTitle) {
 }
 
 async function searchTmdb_bg(originalTitle, chineseTitle, listTitle, searchMediaType = CONSTANTS_bg.MEDIA_TYPES.TV, year = '', isLikelyMovieOrShort = false, isShortFilm = false, bgmItemDataForScoringOverride = null) {
-  const cacheKeyComponents = {
-    oT: originalTitle,
-    cT: chineseTitle,
-    lT: listTitle,
+  const primaryQuery = normalizeTmdbQuery_bg(originalTitle || chineseTitle || listTitle || "");
+  const cacheKeyParams = {
+    q: primaryQuery,
     media: searchMediaType,
-    y: year,
-    v: "1.8_prefilter_logic",
-    lmos: isLikelyMovieOrShort,
-    isf: isShortFilm
+    y: year || "",
+    isf: !!isShortFilm
   };
-
-  if (bgmItemDataForScoringOverride) {
-    cacheKeyComponents.bRt = bgmItemDataForScoringOverride.bgm_rating_total;
-    cacheKeyComponents.bSc = bgmItemDataForScoringOverride.bgm_summary_exists_in_chinese;
-  }
-
-  const cacheKeyParams = cacheKeyComponents;
 
   return CacheUtil_bg.cachedOrFetch(CONSTANTS_bg.CACHE_KEYS.TMDB_SEARCH, cacheKeyParams, async () => {
     let bestOverallMatch = null;
@@ -1041,7 +1063,7 @@ async function searchTmdb_bg(originalTitle, chineseTitle, listTitle, searchMedia
       return bestOverallMatch;
     }
     return null;
-  });
+  }, { ttl: WidgetConfig_bg.TTL_ARCHIVE_MS });
 }
 
 function parseBangumiListItems_bg(htmlContent) {
@@ -1712,7 +1734,6 @@ async function processBangumiPage_bg(url, categoryHint, currentPageString, ranki
     "Referer": `${WidgetConfig_bg.BGM_BASE_URL}/`,
     "Accept-Language": "zh-CN,zh;q=0.9"
   };
-  const fetchOptions = { headers: commonHeaders, bangumiAccessToken: bangumiAccessToken, bangumiCookieString: bangumiCookie };
 
   const prefetchedHtmlPromise = PrefetchCache_bg.get(url);
   if (prefetchedHtmlPromise) {
@@ -1725,9 +1746,7 @@ async function processBangumiPage_bg(url, categoryHint, currentPageString, ranki
 
   if (!listHtml) {
     try {
-      const listHtmlResp = await fetchWithRetry_bg(url, fetchOptions, 'get', false, WidgetConfig_bg.HTTP_MAIN_RETRIES);
-      if (!listHtmlResp?.data) throw new Error("列表页响应数据为空或无效");
-      listHtml = listHtmlResp.data;
+      listHtml = await getCachedBangumiListHtml_bg(url, bangumiAccessToken, bangumiCookie);
     } catch (e) {
       console.error(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [BGM页面处理] 获取列表页 ${url} 失败:`, e.message);
       throw new Error(`请求Bangumi列表页失败: ${e.message}`);
@@ -1764,14 +1783,9 @@ async function processBangumiPage_bg(url, categoryHint, currentPageString, ranki
     const detailPromises = batch.map(item =>
       CacheUtil_bg.cachedOrFetch(
         CONSTANTS_bg.CACHE_KEYS.ITEM_DETAIL_COMPUTED,
-        {
-          itemId: item.id,
-          category: categoryHint,
-          scriptVer: CONSTANTS_bg.SCRIPT_VERSION,
-          callingContextYear: rankingContextInfo?.year || 'all'
-        },
+        String(item.id),
         () => fetchItemDetails_bg(item, categoryHint, rankingContextInfo, bangumiAccessToken, null),
-        { calculateTTL: calculateContentTTL_bg, context: { currentDate: new Date() }, ttlIdentifier: rankingContextInfo }
+        { ttl: WidgetConfig_bg.TTL_ARCHIVE_MS }
       ).catch(e => {
         console.error(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [BGM页面处理] 条目详情处理失败 (BGM ID: ${item.id}):`, e.message);
         return null;
