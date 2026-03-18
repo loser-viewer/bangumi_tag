@@ -4,7 +4,7 @@ WidgetMetadata = {
   description: "Bangumi 标签浏览 + TMDB匹配",
   author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
-  version: "1.4.4",
+  version: "1.4.5",
   requiredVersion: "0.0.1",
   detailCacheDuration: 60,
   modules: [
@@ -62,8 +62,8 @@ function buildDisplayDescription_bg(releaseDate, description, rating) {
 
 //===============BGM功能函数===============
 const WidgetConfig_bg = {
-    MAX_CONCURRENT_DETAILS_FETCH: 16, 
-    MAX_CONCURRENT_TMDB_SEARCHES: 8, 
+    MAX_CONCURRENT_DETAILS_FETCH: 6, 
+    MAX_CONCURRENT_TMDB_SEARCHES: 3, 
     MAX_CONCURRENT_CALENDAR_ENHANCE: 3,
     MAX_CONCURRENT_TMDB_FULL_DETAILS_FETCH: 3,
     HTTP_RETRIES: 1, 
