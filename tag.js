@@ -4,7 +4,7 @@ WidgetMetadata = {
   description: "Bangumi 标签浏览 + TMDB匹配",
   author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
-  version: "1.4.5",
+  version: "1.4.6",
   requiredVersion: "0.0.1",
   detailCacheDuration: 60,
   modules: [
@@ -108,7 +108,7 @@ const WidgetConfig_bg = {
     TMDB_PENALTY_NO_CHINESE_OVERVIEW_RAW: -75,
     BGM_USE_BGMD_INDEX: true, 
     TTL_BGMD_INDEX_MS: 24 * 60 * 60 * 1000,
-    BGMD_INDEX_URL: "https://raw.githubusercontent.com/loser-viewer/bangumi_tag/refs/heads/main/index.json", 
+    BGMD_INDEX_URL: "https://cdn.jsdelivr.net/gh/loser-viewer/bangumi_tag@main/index.json", 
     BGM_BASE_URL: "https://bgm.tv", 
     BGM_API_BASE_URL: "https://api.bgm.tv",
     BGM_BROWSE_URL: "https://bangumi.tv", 
