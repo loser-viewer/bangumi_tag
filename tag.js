@@ -4,7 +4,7 @@ WidgetMetadata = {
   description: "Bangumi 标签浏览 + TMDB匹配",
   author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
-  version: "1.4.9",
+  version: "1.5.0",
   requiredVersion: "0.0.1",
   detailCacheDuration: 60,
   modules: [
@@ -503,6 +503,16 @@ function getInfoFromBox_bg($, labelText) {
     }
   }
   return value;
+}
+
+function isBangumiErrorPage_bg($, htmlText = "") {
+  const pageText = String(htmlText || $("body").text() || "").replace(/\s+/g, " ").trim();
+
+  return (
+    pageText.includes("数据库中没有查询您所指定的条目") ||
+    pageText.includes("呜咕，出错了") ||
+    pageText.includes("没有查询您所指定的条目")
+  );
 }
 
 function parseDate_bg(dateStr) {
@@ -1107,41 +1117,40 @@ function parseBangumiListItems_bg(htmlContent) {
     const fullDetailLink = `${WidgetConfig_bg.BGM_BASE_URL}${detailLink}`;
 
     const $coverImg = $item.find('a.subjectCover img.cover');
-    let listCoverUrl = $coverImg.attr('src') || '';
-    const coverAlt = ($coverImg.attr('alt') || '').trim().toLowerCase();
+let listCoverUrl = $coverImg.attr('src') || '';
+const coverAlt = ($coverImg.attr('alt') || '').trim().toLowerCase();
 
-    if (listCoverUrl && listCoverUrl.startsWith('//')) {
-      listCoverUrl = 'https:' + listCoverUrl;
-    }
+if (listCoverUrl && listCoverUrl.startsWith('//')) {
+  listCoverUrl = 'https:' + listCoverUrl;
+} else if (!listCoverUrl) {
+  listCoverUrl = '';
+}
 
-    const rating = $item.find('div.inner > p.rateInfo > small.fade').text().trim();
-    const infoTextFromList = $item.find('div.inner > p.info.tip').text().trim();
+const rating = $item.find('div.inner > p.rateInfo > small.fade').text().trim();
+const infoTextFromList = $item.find('div.inner > p.info.tip').text().trim();
 
-    // ===== 过滤无效 / 不完整条目 =====
-    const normalizedCoverUrl = String(listCoverUrl || '').toLowerCase();
+const normalizedCoverUrl = String(listCoverUrl || '').toLowerCase();
 
-    const isTextOnlyCover =
-      normalizedCoverUrl.includes('text_only') ||
-      normalizedCoverUrl.includes('text-only') ||
-      coverAlt.includes('text only');
+const isTextOnlyCover =
+  normalizedCoverUrl.includes('text_only') ||
+  normalizedCoverUrl.includes('text-only') ||
+  coverAlt.includes('text only');
 
-    const hasNoUsableCover = !listCoverUrl || isTextOnlyCover;
+const hasNoUsableCover = !listCoverUrl || isTextOnlyCover;
 
-    // 这里按你的需求：没有正常封面的条目直接剔除
-    if (hasNoUsableCover) {
-      if (WidgetConfig_bg.DEBUG_LOGGING) {
-        console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [BGM列表解析] 跳过无有效封面条目: ID=${subjectId}, title="${title}"`);
-      }
-      return;
-    }
+if (hasNoUsableCover) {
+  if (WidgetConfig_bg.DEBUG_LOGGING) {
+    console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [BGM列表解析] 跳过无有效封面条目: ID=${subjectId}, title="${title}"`);
+  }
+  return;
+}
 
-    // 标题为空也跳过
-    if (!title) {
-      if (WidgetConfig_bg.DEBUG_LOGGING) {
-        console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [BGM列表解析] 跳过无标题条目: ID=${subjectId}`);
-      }
-      return;
-    }
+if (!title) {
+  if (WidgetConfig_bg.DEBUG_LOGGING) {
+    console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [BGM列表解析] 跳过无标题条目: ID=${subjectId}`);
+  }
+  return;
+}
 
     if (WidgetConfig_bg.DEBUG_LOGGING) {
       console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [BGM列表解析_V2_DEBUG] 解析到条目 ${index + 1}: ID=${subjectId}, Title='${title.substring(0,30)}', Link='${detailLink}', Cover='${listCoverUrl ? listCoverUrl.substring(0,50) + "..." : "N/A"}', Rating='${rating}', Info='${infoTextFromList.substring(0,50)}...'`);
@@ -1500,19 +1509,27 @@ async function fetchItemDetails_bg(pendingItem, categoryHint, rankingContext = {
       };
 
       const detailHtmlResponse = await fetchWithRetry_bg(
-        pendingItem.detailLink,
-        detailFetchOptions,
-        'get',
-        false,
-        WidgetConfig_bg.HTTP_RETRIES
-      );
+  pendingItem.detailLink,
+  detailFetchOptions,
+  'get',
+  false,
+  WidgetConfig_bg.HTTP_RETRIES
+);
 
-      if (detailHtmlResponse?.data) {
-        const $ = Widget.html.load(detailHtmlResponse.data);
+if (detailHtmlResponse?.data) {
+  const detailHtmlText = String(detailHtmlResponse.data || "");
+  const $ = Widget.html.load(detailHtmlText);
 
-        cTitleFromBgmDetail = getInfoFromBox_bg($, "中文名:");
-        jTitleFromBgmDetail = getInfoFromBox_bg($, "日文名:") || getInfoFromBox_bg($, "日本語題:") || getInfoFromBox_bg($, "原作名:");
-        bgmTypeValueFromInfobox = getInfoFromBox_bg($, "类型:");
+  if (isBangumiErrorPage_bg($, detailHtmlText)) {
+    if (WidgetConfig_bg.DEBUG_LOGGING) {
+      console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [BGM详情_极限] 检测到无效详情页，跳过条目: ID ${pendingItem.id}, title="${pendingItem.titleFromList}"`);
+    }
+    return null;
+  }
+
+  cTitleFromBgmDetail = getInfoFromBox_bg($, "中文名:");
+  jTitleFromBgmDetail = getInfoFromBox_bg($, "日文名:") || getInfoFromBox_bg($, "日本語題:") || getInfoFromBox_bg($, "原作名:");
+  bgmTypeValueFromInfobox = getInfoFromBox_bg($, "类型:");
 
         const pageTags = [];
         $('div#subject_detail div.subject_tag_section a.l').each((i, elem) => {
@@ -1712,23 +1729,32 @@ async function fetchItemDetails_bg(pendingItem, categoryHint, rankingContext = {
   } else {
     try {
       const detailHtmlResponse = await fetchWithRetry_bg(
-        pendingItem.detailLink,
-        {
-          headers: {
-            "User-Agent": WidgetConfig_bg.BGM_API_USER_AGENT,
-            "Referer": `${WidgetConfig_bg.BGM_BASE_URL}/`,
-            "Accept-Language": "zh-CN,zh;q=0.9"
-          }
-        },
-        'get',
-        false,
-        WidgetConfig_bg.HTTP_MAIN_RETRIES
-      );
+  pendingItem.detailLink,
+  {
+    headers: {
+      "User-Agent": WidgetConfig_bg.BGM_API_USER_AGENT,
+      "Referer": `${WidgetConfig_bg.BGM_BASE_URL}/`,
+      "Accept-Language": "zh-CN,zh;q=0.9"
+    }
+  },
+  'get',
+  false,
+  WidgetConfig_bg.HTTP_MAIN_RETRIES
+);
 
-      if (!detailHtmlResponse?.data) throw new Error(`Bangumi详情页数据为空或无效: ${pendingItem.detailLink}`);
+if (!detailHtmlResponse?.data) throw new Error(`Bangumi详情页数据为空或无效: ${pendingItem.detailLink}`);
 
-      const $ = Widget.html.load(detailHtmlResponse.data);
-      item.title = ($('h1.nameSingle > a').first().text().trim()) || item.title;
+const detailHtmlText = String(detailHtmlResponse.data || "");
+const $ = Widget.html.load(detailHtmlText);
+
+if (isBangumiErrorPage_bg($, detailHtmlText)) {
+  if (WidgetConfig_bg.DEBUG_LOGGING) {
+    console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [BGM详情_极限] fallback 阶段检测到无效详情页，跳过条目: ID ${pendingItem.id}, title="${pendingItem.titleFromList}"`);
+  }
+  return null;
+}
+
+item.title = ($('h1.nameSingle > a').first().text().trim()) || item.title;
       const cnTitleFromDetail = getInfoFromBox_bg($, "中文名:");
       if (cnTitleFromDetail) item.title = cnTitleFromDetail;
 
