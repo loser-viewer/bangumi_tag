@@ -4,7 +4,7 @@ WidgetMetadata = {
   description: "Bangumi 标签浏览 + TMDB匹配",
   author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
-  version: "1.4.8",
+  version: "1.4.9",
   requiredVersion: "0.0.1",
   detailCacheDuration: 60,
   modules: [
@@ -1106,15 +1106,42 @@ function parseBangumiListItems_bg(htmlContent) {
 
     const fullDetailLink = `${WidgetConfig_bg.BGM_BASE_URL}${detailLink}`;
 
-    let listCoverUrl = $item.find('a.subjectCover img.cover').attr('src');
+    const $coverImg = $item.find('a.subjectCover img.cover');
+    let listCoverUrl = $coverImg.attr('src') || '';
+    const coverAlt = ($coverImg.attr('alt') || '').trim().toLowerCase();
+
     if (listCoverUrl && listCoverUrl.startsWith('//')) {
       listCoverUrl = 'https:' + listCoverUrl;
-    } else if (!listCoverUrl) {
-      listCoverUrl = '';
     }
 
     const rating = $item.find('div.inner > p.rateInfo > small.fade').text().trim();
     const infoTextFromList = $item.find('div.inner > p.info.tip').text().trim();
+
+    // ===== 过滤无效 / 不完整条目 =====
+    const normalizedCoverUrl = String(listCoverUrl || '').toLowerCase();
+
+    const isTextOnlyCover =
+      normalizedCoverUrl.includes('text_only') ||
+      normalizedCoverUrl.includes('text-only') ||
+      coverAlt.includes('text only');
+
+    const hasNoUsableCover = !listCoverUrl || isTextOnlyCover;
+
+    // 这里按你的需求：没有正常封面的条目直接剔除
+    if (hasNoUsableCover) {
+      if (WidgetConfig_bg.DEBUG_LOGGING) {
+        console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [BGM列表解析] 跳过无有效封面条目: ID=${subjectId}, title="${title}"`);
+      }
+      return;
+    }
+
+    // 标题为空也跳过
+    if (!title) {
+      if (WidgetConfig_bg.DEBUG_LOGGING) {
+        console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [BGM列表解析] 跳过无标题条目: ID=${subjectId}`);
+      }
+      return;
+    }
 
     if (WidgetConfig_bg.DEBUG_LOGGING) {
       console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [BGM列表解析_V2_DEBUG] 解析到条目 ${index + 1}: ID=${subjectId}, Title='${title.substring(0,30)}', Link='${detailLink}', Cover='${listCoverUrl ? listCoverUrl.substring(0,50) + "..." : "N/A"}', Rating='${rating}', Info='${infoTextFromList.substring(0,50)}...'`);
