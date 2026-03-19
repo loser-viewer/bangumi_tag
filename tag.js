@@ -4,7 +4,7 @@ WidgetMetadata = {
   description: "Bangumi 标签浏览 + TMDB匹配",
   author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
-  version: "1.5.0",
+  version: "1.5.1",
   requiredVersion: "0.0.1",
   detailCacheDuration: 60,
   modules: [
@@ -1509,27 +1509,27 @@ async function fetchItemDetails_bg(pendingItem, categoryHint, rankingContext = {
       };
 
       const detailHtmlResponse = await fetchWithRetry_bg(
-  pendingItem.detailLink,
-  detailFetchOptions,
-  'get',
-  false,
-  WidgetConfig_bg.HTTP_RETRIES
-);
+        pendingItem.detailLink,
+        detailFetchOptions,
+        'get',
+        false,
+        WidgetConfig_bg.HTTP_RETRIES
+      );
 
-if (detailHtmlResponse?.data) {
-  const detailHtmlText = String(detailHtmlResponse.data || "");
-  const $ = Widget.html.load(detailHtmlText);
+      if (detailHtmlResponse?.data) {
+        const detailHtmlText = String(detailHtmlResponse.data || "");
+        const $ = Widget.html.load(detailHtmlText);
 
-  if (isBangumiErrorPage_bg($, detailHtmlText)) {
-    if (WidgetConfig_bg.DEBUG_LOGGING) {
-      console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [BGM详情_极限] 检测到无效详情页，跳过条目: ID ${pendingItem.id}, title="${pendingItem.titleFromList}"`);
-    }
-    return null;
-  }
+        if (isBangumiErrorPage_bg($, detailHtmlText)) {
+          if (WidgetConfig_bg.DEBUG_LOGGING) {
+            console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [BGM详情_极限] 检测到无效详情页，跳过条目: ID ${pendingItem.id}, title="${pendingItem.titleFromList}"`);
+          }
+          return null;
+        }
 
-  cTitleFromBgmDetail = getInfoFromBox_bg($, "中文名:");
-  jTitleFromBgmDetail = getInfoFromBox_bg($, "日文名:") || getInfoFromBox_bg($, "日本語題:") || getInfoFromBox_bg($, "原作名:");
-  bgmTypeValueFromInfobox = getInfoFromBox_bg($, "类型:");
+        cTitleFromBgmDetail = getInfoFromBox_bg($, "中文名:");
+        jTitleFromBgmDetail = getInfoFromBox_bg($, "日文名:") || getInfoFromBox_bg($, "日本語題:") || getInfoFromBox_bg($, "原作名:");
+        bgmTypeValueFromInfobox = getInfoFromBox_bg($, "类型:");
 
         const pageTags = [];
         $('div#subject_detail div.subject_tag_section a.l').each((i, elem) => {
@@ -1686,7 +1686,7 @@ if (detailHtmlResponse?.data) {
         }
       }
     } catch (bgmdError) {
-      console.error(`${logPrefixDetails} Error during BGMD index processing for BGM ID ${pendingItem.id}:`, bgmdError.message, bgmdError.stack?.substring(0,150));
+      console.error(`${logPrefixDetails} Error during BGMD index processing for BGM ID ${pendingItem.id}:`, bgmdError.message, bgmdError.stack?.substring(0, 150));
     }
   }
 
@@ -1727,58 +1727,14 @@ if (detailHtmlResponse?.data) {
   if (tmdbRes?.id) {
     await integrateTmdbDataToItem_bg(item, tmdbRes, tmdbSType, yearForTmdb, isLikelyMovieOrShort, isShortFilm);
   } else {
-    try {
-      const detailHtmlResponse = await fetchWithRetry_bg(
-  pendingItem.detailLink,
-  {
-    headers: {
-      "User-Agent": WidgetConfig_bg.BGM_API_USER_AGENT,
-      "Referer": `${WidgetConfig_bg.BGM_BASE_URL}/`,
-      "Accept-Language": "zh-CN,zh;q=0.9"
+    if (WidgetConfig_bg.DEBUG_LOGGING) {
+      console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [TMDB过滤] TMDB 未命中，丢弃条目: BGM ID ${pendingItem.id}, title="${pendingItem.titleFromList}"`);
     }
-  },
-  'get',
-  false,
-  WidgetConfig_bg.HTTP_MAIN_RETRIES
-);
-
-if (!detailHtmlResponse?.data) throw new Error(`Bangumi详情页数据为空或无效: ${pendingItem.detailLink}`);
-
-const detailHtmlText = String(detailHtmlResponse.data || "");
-const $ = Widget.html.load(detailHtmlText);
-
-if (isBangumiErrorPage_bg($, detailHtmlText)) {
-  if (WidgetConfig_bg.DEBUG_LOGGING) {
-    console.log(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [BGM详情_极限] fallback 阶段检测到无效详情页，跳过条目: ID ${pendingItem.id}, title="${pendingItem.titleFromList}"`);
-  }
-  return null;
-}
-
-item.title = ($('h1.nameSingle > a').first().text().trim()) || item.title;
-      const cnTitleFromDetail = getInfoFromBox_bg($, "中文名:");
-      if (cnTitleFromDetail) item.title = cnTitleFromDetail;
-
-      let detailPagePoster = await getBangumiDetailCover_bg(String(pendingItem.id), pendingItem.detailLink, bangumiAccessToken, bangumiCookie);
-      if (detailPagePoster) item.posterPath = detailPagePoster;
-
-      let rDateStrFromDetail = getInfoFromBox_bg($, "放送开始:") || getInfoFromBox_bg($, "上映年度:");
-      item.releaseDate = parseDate_bg(rDateStrFromDetail) || item.releaseDate;
-      item.rating = ($('#panelInterestWrapper .global_rating .number').text().trim()) || item.rating;
-
-      const summaryFromDetail = getInfoFromBox_bg($, "简介");
-      if (summaryFromDetail) {
-        item.description = buildDisplayDescription_bg(item.releaseDate, summaryFromDetail, item.rating);
-      } else {
-        item.description = buildDisplayDescription_bg(item.releaseDate, item.description, item.rating);
-      }
-    } catch (htmlError) {
-      console.error(`${CONSTANTS_bg.LOG_PREFIX_GENERAL} [BGM详情_极限] 获取/解析BGM HTML详情页失败 (ID ${pendingItem.id}):`, htmlError.message);
-    }
+    return null;
   }
 
   return item;
 }
-
 async function processBangumiPage_bg(url, categoryHint, currentPageString, rankingContextInfo = {}, bangumiAccessToken = null, bangumiCookie = null) {
   const currentPage = currentPageString ? parseInt(currentPageString, 10) : 0;
 
