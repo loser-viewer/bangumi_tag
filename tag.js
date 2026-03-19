@@ -4,7 +4,7 @@ WidgetMetadata = {
   description: "Bangumi 标签浏览 + TMDB匹配",
   author: "hyl",
   site: "https://github.com/quantumultxx/ForwardWidgets",
-  version: "1.5.1",
+  version: "1.5.2",
   requiredVersion: "0.0.1",
   detailCacheDuration: 60,
   modules: [
@@ -63,8 +63,8 @@ const WidgetConfig_bg = {
   HTTP_MAIN_RETRIES: 2,
   HTTP_RETRY_DELAY: 1000,
 
-  FETCH_FULL_TMDB_DETAILS: false,
-  FETCH_TMDB_DETAIL_FOR_BGMD_HIT: false,
+  FETCH_FULL_TMDB_DETAILS: true,
+  FETCH_TMDB_DETAIL_FOR_BGMD_HIT: true,
 
   TMDB_APPEND_TO_RESPONSE: "translations,genres",
   TMDB_SEARCH_STAGE1_YEAR_STRICT_SCORE_BOOST: 12,
